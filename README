@@ -1,0 +1,6 @@
+jSQLsh - SQLite Shell written for Jim TCL (http://jim.berlios.de/)
+Lorance Stinson - Lorance Stinson AT gmail DOT com
+
+There are things about the SQLite command shell that annoy me.
+Since there are no easily modified command line SQL clients, so I wrote my
+own. This is also my first foray in TCL programming.
