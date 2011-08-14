@@ -107,14 +107,41 @@ proc jsqlsh.debug {&config {output ""} {caller "Unknown"} args} {
     }
 }
 
+# jsqlsh.display - Display output from the database. {{{2
+proc jsqlsh.display {&config output} {
+    if {$output eq ""} { return }
+
+    set first [lindex $output 0]
+    set headers {}
+    set rows [llength $output]
+    set cols [expr [llength $first] / 2]
+    loop i 0 $cols  {
+        lappend headers [lindex $first [expr {$i * 2}]]
+    }
+
+    switch $config(mode) {
+        "csv"   {set cmd "jsqlsh.display_csv"}
+        "list"  {set cmd "jsqlsh.display_list"}
+        "table" {set cmd "jsqlsh.display_table"}
+        "tcl"   {set cmd "jsqlsh.display_tcl"}
+    }
+    if {$config(term_height) && $config(page) && $config(pager) ne "" &&
+        $rows > $config(term_height)} {
+        set channel [open "| $config(pager)" "w"]
+        $cmd config $output $headers $channel
+        close $channel
+    } else {
+        $cmd config $output $headers  ""
+    }
+}
+
 # jsqlsh.display_csv - Display output as csv. {{{2
-proc jsqlsh.display_csv {&config output headers cols} {
-    set escape [expr {$config(escape) eq "\\" ? "\\\\" : $config(escape)}]
-    proc make_csv {config row escape} {
+proc jsqlsh.display_csv {&config output headers channel} {
+    proc make_csv {config row} {
         join [
             lmap col $row {
-                if {[string match "*\[$config(sep)$config(quote)$escape \]*" $col]} {
-                    regsub -all "\[$config(quote)$escape\]" $col "$escape&" col
+                if {[string match "*\[$config(sep)$config(quote)$config(escape) \]*" $col]} {
+                    regsub -all "\[$config(quote)$config(escape)\]" $col "$config(escape)&" col
                     set col "\"$col\""
                 } else {
                     set col
@@ -124,71 +151,61 @@ proc jsqlsh.display_csv {&config output headers cols} {
     }
 
     if {$config(header)} {
-        puts [make_csv $config $headers $escape]
+        puts $channel [make_csv $config $headers]
     }
 
     foreach row $output {
-        puts [make_csv $config [lmap col $headers {expr {"$row($col)"}}] $escape]
+        puts $channel [make_csv $config [lmap col $headers {expr {"$row($col)"}}]]
     }
 }
 
 # jsqlsh.display_list - Display output as a list. {{{2
-proc jsqlsh.display_list {&config output headers cols} {
+proc jsqlsh.display_list {&config output headers channel} {
     if {$config(header)} {
-        puts [join $headers $config(sep)]
+        puts $channel [join $headers $config(sep)]
     }
 
     foreach row $output {
-        puts [join [lmap col $headers {expr {"$row($col)"}}] $config(sep)]
+        puts $channel [join [lmap col $headers {expr {"$row($col)"}}] $config(sep)]
     }
 }
 
 # jsqlsh.display_table - Display output as a table. {{{2
-proc jsqlsh.display_table {&config output headers cols} {
-    if {$config(header)} {
-        puts [list $headers]
+proc jsqlsh.display_table {&config output headers channel} {
+    # Set the column widths.
+    array set col_width {}
+    foreach col $headers {
+        array set col_width($col) [string length $col]
+    }
+    foreach row $output {
+        foreach col $headers {
+            set len [string length $row($col)]
+            if {$len > $col_width($col)} {
+                set col_width($col) $len
+            }
+        }
     }
 
+    # Print the header.
+    if {$config(header)} {
+        puts $channel [join [lmap col $headers {format " %-*s" $col_width($col) $col}] " |"]
+        puts $channel [join [lmap col $headers {string repeat "-" $col_width($col)}] "--+"]
+    }
+
+    # Print the rows.
     foreach row $output {
-        puts [list [lmap col $headers {expr {"$row($col)"}}]]
+        puts $channel [join [lmap col $headers {format " %-*s" $col_width($col) $row($col)}] " |"]
     }
 }
 
 # jsqlsh.display_tcl - Display output as a TCL list. {{{2
-proc jsqlsh.display_tcl {&config output headers cols} {
+proc jsqlsh.display_tcl {&config output headers channel} {
     if {$config(header)} {
-        puts [list $headers]
+        puts $channel [list $headers]
     }
 
     foreach row $output {
-        puts [list [lmap col $headers {expr {"$row($col)"}}]]
-    }
-}
-
-# jsqlsh.display - Display output from the database. {{{2
-proc jsqlsh.display {&config output} {
-    if {$output eq ""} { return }
-
-    set first [lindex $output 0]
-    set headers {}
-    set cols [expr [llength $first] / 2]
-    loop i 0 $cols  {
-        lappend headers [lindex $first [expr {$i * 2}]]
-    }
-
-    switch $config(mode) {
-        "csv" {
-            jsqlsh.display_csv config $output $headers $cols
-        }
-        "list" {
-            jsqlsh.display_list config $output $headers $cols
-        }
-        "table" {
-            jsqlsh.display_table config $output $headers $cols
-        }
-        "tcl" {
-            jsqlsh.display_tcl config $output $headers $cols
-        }
+        puts $channel [list [lmap col $headers {expr {"$row($col)"}}]]
     }
 }
 
@@ -318,6 +335,11 @@ proc jsqlsh.handle_cmd_set {&config input option} {
         # Make sure the file extension starts with '.'.
         if {[string index $value 0] ne "."} {
             set value ".$value"
+        }
+    } elseif {$option eq "escape"} {
+        # Unfortunately '\' has to be doubled to work right.
+        if {$value eq "\\"} {
+            set value "\\\\"
         }
     } elseif {$option eq "mode"} {
         # Make sure the output mode is valid.
@@ -533,6 +555,23 @@ proc jsqlsh.replace {input search args} {
     return $output
 }
 
+# jsqlsh.term_info - Get the terminal information. {{{2
+proc jsqlsh.term_info {&config} {
+    if {[catch {set stty [exec "stty" "-a"]}]} {
+        return
+    }
+    foreach item [split $stty ";"] {
+        set temp [split [string trim $item] " "]
+        if {[lindex $temp 0] eq "rows"} {
+            set config(term_height) [lindex $temp 1]
+        }
+        if {[lindex $temp 0] eq "columns"} {
+            set config(term_width) [lindex $temp 1]
+            break
+        }
+    }
+}
+
 # jsqlsh.usage - Print the command line usage. {{{2
 proc jsqlsh.usage {} {
     global argv0
@@ -571,10 +610,10 @@ array set jsqlsh_config {
     db_name     ":memory:"
     debug       0
     editor      ""
-    escape      "\\"
+    escape      "\\\\"
     ext         ".sq3"
     header      1
-    mode        "list"
+    mode        "table"
     null        "NULL"
     page        1
     pager       ""
@@ -583,11 +622,14 @@ array set jsqlsh_config {
     ps2         "?"
     quote       "\""
     sep         ","
+    term_height 0
+    term_width  0
 }
 
 # Set defaults.
 set jsqlsh_config(editor) [env EDITOR "vi"]
 set jsqlsh_config(pager) [env PAGER "more"]
+jsqlsh.term_info jsqlsh_config
 
 # User settable options.
 # Contains the option names and descriptions.
