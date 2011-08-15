@@ -71,12 +71,22 @@ proc jsqlsh.cmd_opts {&config} {
     set create_db 0
     foreach arg $argv {
         switch -glob -- $arg {
+            -a  { set config(auto) 1 }
             --h* -
             -h* { jsqlsh.usage }
-            -c* { set create_db 1 }
-            -d* { set config(debug) 1 }
+            -c  { set create_db 1 }
+            -d  { set config(dumb) 1; set config(auto) 1 }
+            -D  { set config(debug) 1 }
+            -s* {
+                jsqlsh.handle_cmd_set config $arg [
+                    regsub "=" [string range $arg 2 end] " "]
+            }
             default {
                 if {$create_db} {
+                    if {[jsqlsh.check_file $arg]} {
+                        puts "The file '$arg' already exists!"
+                        exit 1
+                    }
                     set config(db_name) $arg
                 }
                 if {[jsqlsh.check_file $arg]} {
@@ -92,7 +102,7 @@ proc jsqlsh.cmd_opts {&config} {
 }
 
 # jsqlsh.debug - Outputs debug information. {{{2
-proc jsqlsh.debug {&config {output ""} {caller "Unknown"} args} {
+proc jsqlsh.debug {caller {output ""} args} {
     set dtime [clock format [clock seconds] -format "%Y-%m-%d %I:%M %p"]
     puts "DEBUG: ($caller) $dtime"
     if {$output ne ""} {
@@ -109,21 +119,21 @@ proc jsqlsh.debug {&config {output ""} {caller "Unknown"} args} {
 
 # jsqlsh.display - Display output from the database. {{{2
 proc jsqlsh.display {&config output} {
-    if {$output eq ""} { return }
+    if {$output eq ""} { return 0 }
 
     set first [lindex $output 0]
     set headers {}
     set rows [llength $output]
     set cols [expr [llength $first] / 2]
-    loop i 0 $cols  {
+    loop i 0 $cols {
         lappend headers [lindex $first [expr {$i * 2}]]
     }
 
-    switch $config(mode) {
-        "csv"   {set cmd "jsqlsh.display_csv"}
-        "list"  {set cmd "jsqlsh.display_list"}
-        "table" {set cmd "jsqlsh.display_table"}
-        "tcl"   {set cmd "jsqlsh.display_tcl"}
+    if {$config(mode) in $config(modes)} {
+        set cmd "jsqlsh.display_$config(mode)"
+    } else {
+        puts "Unknown display mode '$config(mode)'."
+        return $rows
     }
     if {$config(term_height) && $config(page) && $config(pager) ne "" &&
         $rows > $config(term_height)} {
@@ -133,11 +143,13 @@ proc jsqlsh.display {&config output} {
     } else {
         $cmd config $output $headers  ""
     }
+
+    return $rows
 }
 
 # jsqlsh.display_csv - Display output as csv. {{{2
 proc jsqlsh.display_csv {&config output headers channel} {
-    proc make_csv {config row} {
+    proc list_to_csv {config row} {
         join [
             lmap col $row {
                 if {[string match "*\[$config(sep)$config(quote)$config(escape) \]*" $col]} {
@@ -151,11 +163,11 @@ proc jsqlsh.display_csv {&config output headers channel} {
     }
 
     if {$config(header)} {
-        puts $channel [make_csv $config $headers]
+        puts $channel [list_to_csv $config $headers]
     }
 
     foreach row $output {
-        puts $channel [make_csv $config [lmap col $headers {expr {"$row($col)"}}]]
+        puts $channel [list_to_csv $config [lmap col $headers {expr {"$row($col)"}}]]
     }
 }
 
@@ -172,6 +184,11 @@ proc jsqlsh.display_list {&config output headers channel} {
 
 # jsqlsh.display_table - Display output as a table. {{{2
 proc jsqlsh.display_table {&config output headers channel} {
+    proc print_row {data {sep " |"}} {
+        upvar channel channel
+        puts $channel [join [uplevel "lmap col \$headers {$data}"] $sep]
+    }
+
     # Set the column widths.
     array set col_width {}
     foreach col $headers {
@@ -179,22 +196,24 @@ proc jsqlsh.display_table {&config output headers channel} {
     }
     foreach row $output {
         foreach col $headers {
-            set len [string length $row($col)]
-            if {$len > $col_width($col)} {
-                set col_width($col) $len
+            foreach line [split $row($col) "\n\r"] {
+                set len [string length $line]
+                if {$len > $col_width($col)} {
+                    set col_width($col) $len
+                }
             }
         }
     }
 
     # Print the header.
     if {$config(header)} {
-        puts $channel [join [lmap col $headers {format " %-*s" $col_width($col) $col}] " |"]
-        puts $channel [join [lmap col $headers {string repeat "-" $col_width($col)}] "--+"]
+        print_row {format " %-*s" $col_width($col) $col}
+        print_row {string repeat "-" [expr {$col_width($col) + 2}]} "+"
     }
 
     # Print the rows.
     foreach row $output {
-        puts $channel [join [lmap col $headers {format " %-*s" $col_width($col) $row($col)}] " |"]
+        print_row {format " %-*s" $col_width($col) $row($col)}
     }
 }
 
@@ -205,17 +224,17 @@ proc jsqlsh.display_tcl {&config output headers channel} {
     }
 
     foreach row $output {
-        puts $channel [list [lmap col $headers {expr {"$row($col)"}}]]
+        puts $channel [list [lmap col $headers {set row($col)}]]
     }
 }
 
 # jsqlsh.exec_query - Execute a query returning the output. {{{2
 proc jsqlsh.exec_query {&config db query args} {
-    if {$args eq {{}} } {
+    if {[llength $args] == 0 || $args eq {{}} } {
         set query [jsqlsh.replace $query "%"]
     }
     if {$config(debug)} {
-        jsqlsh.debug config $query "jsqlsh.exec_query" $args
+        jsqlsh.debug "jsqlsh.exec_query" $query $args
     }
     set ret [catch {$db query -null $config(null) $query $args} output]
     if {$ret} {
@@ -267,13 +286,20 @@ proc jsqlsh.handle_cmd_describe {&config db input option} {
     }
 }
 
+# jsqlsh.handle_cmd_edit - Handle the user command '/edit'. {{{2
+proc jsqlsh.handle_cmd_edit {&config input} {
+    puts "TODO"
+}
+
 # jsqlsh.handle_cmd_go - Handle the user command '/go'. {{{2
 proc jsqlsh.handle_cmd_go {&config db} {
     set output [jsqlsh.exec_query config $db $config(buffer)]
-    jsqlsh.display config $output
-    set config(rows) [llength $output]
+    set config(rows) [jsqlsh.display config $output]
     puts "$config(rows) row(s) returned"
-    readline.addhistory $config(buffer)
+    if {$config(buffer) ne $config(buffer_prev)} {
+        readline.addhistory $config(buffer)
+    }
+    set config(buffer_prev) $config(buffer)
     set config(buffer) ""
     set config(prompt) $config(ps1)
 }
@@ -323,10 +349,7 @@ proc jsqlsh.handle_cmd_set {&config input option} {
     set type [string range $jsqlsh_user_opts($option) end-3 end]
     if {$type eq "Bool"} {
         # Make Bool values 1 or 0.
-        if {![string compare         $value "1"]    ||
-            ![string compare -nocase $value "true"] ||
-            ![string compare -nocase $value "yes"]  ||
-            ![string compare -nocase $value "on"]   } {
+        if {[string tolower $value ] in {1 true yes on}} {
             set value 1
         } else {
             set value 0
@@ -344,15 +367,15 @@ proc jsqlsh.handle_cmd_set {&config input option} {
     } elseif {$option eq "mode"} {
         # Make sure the output mode is valid.
         set value [string tolower $value]
-        if {[lsearch {csv list table tcl} $value] == -1} {
-            puts "Invalid option for mode."
-            puts "Must be one of (list, table, array)."
+        if {[string tolower $value] ni $config(modes)} {
+            puts "Invalid setting for mode."
+            puts "Must be one of ([join $config(modes) ", "])."
             return
         }
     }
 
     if {$config(debug)} {
-        jsqlsh.debug config "Setting ($option) to '$value'" "jsqlsh.handle_cmd_set"
+        jsqlsh.debug "jsqlsh.handle_cmd_set" "Setting ($option) to '$value'"
     }
     set config($option) $value
 }
@@ -407,7 +430,7 @@ proc jsqlsh.jsqlsh.handle_input {&config &db input} {
     }
 
     # Check for commands.
-    if {[string index $input 0] eq "/"} {
+    if {!$config(dumb) && [string index $input 0] eq "/"} {
         set option ""
         if {[set index [string first " " $input]] > 0} {
             incr index
@@ -484,7 +507,10 @@ proc jsqlsh.opendb {&config} {
     if {$ret != 0} {
         puts "Error opening the database!"
         puts "Code: $ret Error: $error"
-        exit
+        exit 1
+    }
+    if {[env HOME ""] ne ""} {
+        set config(db_name) [jsqlsh.replace $config(db_name) [env HOME] "~"
     }
     return $db
 }
@@ -507,13 +533,11 @@ proc jsqlsh.prompt {&config db} {
         puts ""
         jsqlsh.goodbye config $db
     } elseif {$ret != 0} {
-        # Unknown error. Die.
         puts ""
         puts "Readline Error ($ret): $output"
-        exit
+        exit 1
     }
 
-    # All good.
     return $output
 }
 
@@ -534,7 +558,7 @@ proc jsqlsh.shell {&config} {
 }
 
 # jsqlsh.replace - Replace a character or string in the input string. {{{2
-# Special case: If no replace then replace search with search * 2.
+# Special case: If no replace then replace search with search doubled.
 proc jsqlsh.replace {input search args} {
     set output ""
     set prev 0
@@ -545,7 +569,7 @@ proc jsqlsh.replace {input search args} {
         set replace [lindex $args 0]
     }
     set search_len [string length $search]
-    while {[set pos [string first $search $input $prev]] > 0} {
+    while {[set pos [string first $search $input $prev]] >= 0} {
         incr pos -1
         append output [string range $input $prev $pos] $replace
         set prev [expr {$pos + $search_len + 1}]
@@ -558,6 +582,7 @@ proc jsqlsh.replace {input search args} {
 # jsqlsh.term_info - Get the terminal information. {{{2
 proc jsqlsh.term_info {&config} {
     if {[catch {set stty [exec "stty" "-a"]}]} {
+        puts "Unable to determine terminal size!"
         return
     }
     foreach item [split $stty ";"] {
@@ -575,17 +600,20 @@ proc jsqlsh.term_info {&config} {
 # jsqlsh.usage - Print the command line usage. {{{2
 proc jsqlsh.usage {} {
     global argv0
-    puts "Usage: $argv0 \[Options\] \[SQLite File\]"
+    puts "Usage: [file tail $argv0] \[Options\] \[SQLite File\]"
     puts ""
     puts "Open the specified SQLite database file."
     puts "The file must exist, see the '-c' option."
     puts "Defaults to an in-memory database."
     puts ""
     puts "Options:"
-    puts "    -c    Create the database file."
-    puts "          Fails if the file exists."
-    puts "    -d    Debug mode. MUCH useless garbage."
-    puts "    -h    Display this text."
+    puts "    -a            Enable execution of queries ending with ';'. (auto)"
+    puts "    -c            Create the database file. Fails if the file exists."
+    puts "    -d            Disable slash commands and enable auto execution."
+    puts "    -D            Debug mode. (Copious output!)"
+    puts "    -h            Display this text."
+    puts "    -s'opt=val'   Set an option as in the '/s' command."
+    puts "                  Must be formatted as specified."
     exit 1
 }
 
@@ -607,13 +635,16 @@ proc jsqlsh.welcome {&config} {
 array set jsqlsh_config {
     auto        0
     buffer      ""
+    buffer_prev ""
     db_name     ":memory:"
     debug       0
+    dumb        0
     editor      ""
     escape      "\\\\"
     ext         ".sq3"
     header      1
     mode        "table"
+    modes       "csv list table tcl"
     null        "NULL"
     page        1
     pager       ""
@@ -641,7 +672,6 @@ array set jsqlsh_user_opts {
     ext     "SQLite file extension. Text"
     escape  "The escape character for CSV mode. Text"
     header  "If table headers should be printed. Bool"
-    mode    "The output Format. (csv, list, table, tcl) Text" 
     null    "The value that represents SQL NULLs. Text"
     page    "Use the 'pager' program for long results. Bool"
     pager   "The pager program for long results. Text"
@@ -650,6 +680,7 @@ array set jsqlsh_user_opts {
     quote   "The quote character for CSV mode. Text"
     sep     "Field separator for CSV & List modes. Text"
 }
+set jsqlsh_user_opts(mode) "The output Format. ([join $jsqlsh_config(modes) ", "]) Text"
 
 # TODO Read the config file.
 
@@ -658,6 +689,12 @@ jsqlsh.cmd_opts jsqlsh_config
 
 # The initial prompt.
 set jsqlsh_config(prompt) $jsqlsh_config(ps1)
+
+if {$jsqlsh_config(debug)} {
+    jsqlsh.debug "Configuration"                                        \
+        [join [lmap item [array names jsqlsh_config]                    \
+            { format "%-15s => %s" $item $jsqlsh_config($item) }] "\n"]
+}
 
 # Start the shell.
 signal ignore SIGINT
