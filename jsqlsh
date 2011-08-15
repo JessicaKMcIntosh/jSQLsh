@@ -287,8 +287,34 @@ proc jsqlsh.handle_cmd_describe {&config db input option} {
 }
 
 # jsqlsh.handle_cmd_edit - Handle the user command '/edit'. {{{2
-proc jsqlsh.handle_cmd_edit {&config input} {
-    puts "TODO"
+proc jsqlsh.handle_cmd_edit {&config} {
+    if {$config(editor) eq ""} {
+        puts "No editor defined. Can not edit the SQL buffer."
+        return
+    }
+
+    set temp_name [file tempfile]
+    if {![file owned $temp_name] || ![file writable $temp_name]} {
+        puts "Error creating the temporary file."
+        puts "Created '$temp_name' but now the permissions are wrong."
+        puts "Aborting editing the buffer..."
+        return
+    }
+    set temp_chan [open $temp_name "w"]
+    puts $temp_chan $config(buffer)
+    close $temp_chan
+
+    exec >@stdout 2>@stderr $config(editor) $temp_name
+
+    set temp_chan [open $temp_name "r"]
+    set new_buffer [read -nonewline $temp_chan]
+    close $temp_chan
+
+    set config(buffer) $new_buffer
+    puts "Query buffer now contains:"
+    puts $new_buffer
+
+    file delete $temp_name
 }
 
 # jsqlsh.handle_cmd_go - Handle the user command '/go'. {{{2
@@ -441,7 +467,7 @@ proc jsqlsh.jsqlsh.handle_input {&config &db input} {
             /c* { set config(buffer) ""; set config(prompt) $config(ps1) }
             /D  { set config(debug) [expr {!$config(debug)}] }
             /d* { jsqlsh.handle_cmd_describe config $db $input $option }
-            /e* { puts "TODO!!" }
+            /e* { jsqlsh.handle_cmd_edit config }
             /   -
             /go { jsqlsh.handle_cmd_go config $db; return }
             /\\? -
