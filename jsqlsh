@@ -208,6 +208,7 @@ proc jsqlsh.display_table {config output headers channel} {
     }
 
     # Try to truncate long lines if we exceed the display size.
+    set trunc_size 0
     if {$config(trunc) && $config(term_width)} {
         set total_width -1
         set widest [lindex $headers 0]
@@ -237,8 +238,15 @@ proc jsqlsh.display_table {config output headers channel} {
     }
 
     # Print the rows.
-    foreach row $output {
-        print_row {format " %-*s" $col_width($col) [string range $row($col) 0 $col_width($col)]}
+    # TODO Handle truncating multiline fields.
+    if {$trunc_size > 0} {
+        foreach row $output {
+            print_row {format " %-*s" $col_width($col) [string range $row($col) 0 $col_width($col)]}
+        }
+    } else {
+        foreach row $output {
+            print_row {format " %-*s" $col_width($col) $row($col)}
+        }
     }
 }
 
@@ -340,12 +348,12 @@ proc jsqlsh.handle_cmd_edit {&config} {
     set temp_chan [open $temp_name "r"]
     set new_buffer [read -nonewline $temp_chan]
     close $temp_chan
+    file delete $temp_name
 
     set config(buffer) $new_buffer
     puts "Query buffer now contains:"
     puts $new_buffer
-
-    file delete $temp_name
+    puts ""
 }
 
 # jsqlsh.handle_cmd_go - Handle the user command '/go'. {{{2
@@ -527,7 +535,8 @@ proc jsqlsh.handle_cmd_user_macro {&config input option} {
 }
 
 # jsqlsh.handle_input - Handle user input. {{{2
-proc jsqlsh.jsqlsh.handle_input {&config &db input} {
+# Returns 1 if the input should be added to the history.
+proc jsqlsh.handle_input {&config &db input} {
     if {[string length $input] == 0} {
         return
     }
@@ -569,12 +578,6 @@ proc jsqlsh.jsqlsh.handle_input {&config &db input} {
         append config(buffer) \n $input
     }
 
-    # Execute the SQL if auto mode and a ';' is present.
-    if {$config(auto) && [string index $config(buffer) end] eq ";"} {
-        jsqlsh.handle_cmd_go config $db
-        return
-    }
-
     # If the buffer is not empty use the more prompt.
     if {$config(buffer) ne ""} {
         set config(prompt) $config(ps2)
@@ -608,6 +611,32 @@ proc jsqlsh.help {} {
     puts "  /u(ser)# -  Copy the query buffer, or supplied text, into macro #."
 }
 
+# jsqlsh.load_rc_file - Load the configuration file. {{{2
+proc jsqlsh.load_rc_file {&config} {
+    puts "Loading configuration from '$config(rc_file)'."
+
+    set rc_chan [open $config(rc_file) "r"]
+    set rc_data [read -nonewline $rc_chan]
+    close $rc_chan
+
+    set db ""
+    foreach line [split $rc_data "\f\n"] {
+        set line [string trim $line]
+        if {$line eq "" || [string index $line 0] eq "#"} {
+            continue
+        }
+        if {[string index $line 0] ne "/"} {
+            puts "Invalid line: $line"
+            puts "Configuration must be valid jSQLsh commands."
+            continue
+        }
+
+        jsqlsh.handle_input config db $line
+    }
+
+    puts ""
+}
+
 # jsqlsh.opendb - Open the database. {{{2
 proc jsqlsh.opendb {&config} {
     puts "Opening the database '$config(db_name)'."
@@ -618,7 +647,7 @@ proc jsqlsh.opendb {&config} {
         exit 1
     }
     if {[env HOME ""] ne ""} {
-        set config(db_name) [jsqlsh.replace $config(db_name) [env HOME] "~"
+        set config(db_name) [jsqlsh.replace $config(db_name) [env HOME] "~"]
     }
     return $db
 }
@@ -661,13 +690,17 @@ proc jsqlsh.shell {&config} {
         set input [jsqlsh.prompt config $db]
 
         # Handle their input.
-        if {[jsqlsh.jsqlsh.handle_input config db $input]} {
+        if {[jsqlsh.handle_input config db $input] ne ""} {
             if {$input ne $prev_input} {
                 readline.addhistory $input
             }
             set prev_input $input
         }
 
+        # Execute the SQL if auto mode and a ';' is present.
+        if {$config(auto) && [string index $config(buffer) end] eq ";"} {
+            jsqlsh.handle_cmd_go config $db
+        }
     }
 }
 
@@ -775,6 +808,7 @@ array set jsqlsh_config {
 # Set defaults.
 set jsqlsh_config(editor) [env EDITOR "vi"]
 set jsqlsh_config(pager) [env PAGER "more"]
+set jsqlsh_config(rc_file) "[env HOME ""]/.[file tail $argv0]rc"
 jsqlsh.term_info jsqlsh_config
 
 # User Macros.
@@ -801,7 +835,10 @@ array set jsqlsh_user_opts {
 }
 set jsqlsh_user_opts(mode) "The output Format. ([join $jsqlsh_config(modes) ", "]) Text"
 
-# TODO Read the config file.
+# Read the rc file.
+if {[jsqlsh.check_file $jsqlsh_config(rc_file)]} {
+    jsqlsh.load_rc_file jsqlsh_config
+}
 
 # Process command line options.
 jsqlsh.cmd_opts jsqlsh_config
@@ -809,6 +846,7 @@ jsqlsh.cmd_opts jsqlsh_config
 # The initial prompt.
 set jsqlsh_config(prompt) $jsqlsh_config(ps1)
 
+# Show all settings on Debug mode.
 if {$jsqlsh_config(debug)} {
     jsqlsh.debug "Configuration" [jsqlsh.dump_settings $jsqlsh_config]
 }
