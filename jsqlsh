@@ -136,19 +136,21 @@ proc jsqlsh.display {&config output} {
         return $rows
     }
     if {$config(term_height) && $config(page) && $config(pager) ne "" &&
-        $rows > $config(term_height)} {
-        set channel [open "| $config(pager)" "w"]
-        $cmd config $output $headers $channel
-        close $channel
+        $rows > ($config(term_height) - 3)} {
+        catch -signal {
+            set channel [open "| $config(pager)" "w"]
+            $cmd $config $output $headers $channel
+            close $channel
+        }
     } else {
-        $cmd config $output $headers  ""
+        $cmd $config $output $headers  "stdout"
     }
 
     return $rows
 }
 
 # jsqlsh.display_csv - Display output as csv. {{{2
-proc jsqlsh.display_csv {&config output headers channel} {
+proc jsqlsh.display_csv {config output headers channel} {
     proc list_to_csv {config row} {
         join [
             lmap col $row {
@@ -172,7 +174,7 @@ proc jsqlsh.display_csv {&config output headers channel} {
 }
 
 # jsqlsh.display_list - Display output as a list. {{{2
-proc jsqlsh.display_list {&config output headers channel} {
+proc jsqlsh.display_list {config output headers channel} {
     if {$config(header)} {
         puts $channel [join $headers $config(sep)]
     }
@@ -183,7 +185,7 @@ proc jsqlsh.display_list {&config output headers channel} {
 }
 
 # jsqlsh.display_table - Display output as a table. {{{2
-proc jsqlsh.display_table {&config output headers channel} {
+proc jsqlsh.display_table {config output headers channel} {
     proc print_row {data {sep " |"}} {
         upvar channel channel
         puts $channel [join [uplevel "lmap col \$headers {$data}"] $sep]
@@ -205,6 +207,29 @@ proc jsqlsh.display_table {&config output headers channel} {
         }
     }
 
+    # Try to truncate long lines if we exceed the display size.
+    if {$config(trunc) && $config(term_width)} {
+        set total_width -1
+        set widest [lindex $headers 0]
+        foreach col $headers {
+            incr total_width $col_width($col)
+            incr total_width 3
+            if {$col_width($col) > $col_width($widest)} {
+                set widest $col
+            }
+        }
+
+        set trunc_size [expr {$total_width - $config(term_width) + 1}]
+        if {$trunc_size > 0} {
+            # Try truncating the widest row.
+            if {$col_width($widest) > $trunc_size} {
+                set col_width($widest) [expr {$col_width($widest) - $trunc_size}]
+                puts $channel "NOTICE: Column '$widest' truncated by $trunc_size characters to $col_width($widest) characters."
+                puts $channel ""
+            }
+        }
+    }
+
     # Print the header.
     if {$config(header)} {
         print_row {format " %-*s" $col_width($col) $col}
@@ -213,12 +238,12 @@ proc jsqlsh.display_table {&config output headers channel} {
 
     # Print the rows.
     foreach row $output {
-        print_row {format " %-*s" $col_width($col) $row($col)}
+        print_row {format " %-*s" $col_width($col) [string range $row($col) 0 $col_width($col)]}
     }
 }
 
 # jsqlsh.display_tcl - Display output as a TCL list. {{{2
-proc jsqlsh.display_tcl {&config output headers channel} {
+proc jsqlsh.display_tcl {config output headers channel} {
     if {$config(header)} {
         puts $channel [list $headers]
     }
@@ -226,6 +251,12 @@ proc jsqlsh.display_tcl {&config output headers channel} {
     foreach row $output {
         puts $channel [list [lmap col $headers {set row($col)}]]
     }
+}
+
+# jsqlsh.dump_settings - Return the settings as a big string. {{{2
+proc jsqlsh.dump_settings {config} {
+    join [lmap item [array names config] {
+        format "%-15s => %s" $item $config($item)}] "\n"
 }
 
 # jsqlsh.exec_query - Execute a query returning the output. {{{2
@@ -304,7 +335,7 @@ proc jsqlsh.handle_cmd_edit {&config} {
     puts $temp_chan $config(buffer)
     close $temp_chan
 
-    exec >@stdout 2>@stderr $config(editor) $temp_name
+    catch -signal {exec >@stdout 2>@stderr $config(editor) $temp_name}
 
     set temp_chan [open $temp_name "r"]
     set new_buffer [read -nonewline $temp_chan]
@@ -477,6 +508,7 @@ proc jsqlsh.jsqlsh.handle_input {&config &db input} {
             /p* { if {$config(buffer) ne ""} { puts $config(buffer) } }
             /q* { jsqlsh.goodbye config $db }
             /s* { jsqlsh.handle_cmd_set config $input $option }
+            /S* { puts [jsqlsh.dump_settings $config] }
             default { puts "Unknown option. Type '/h' for help"; return }
         
         }
@@ -674,13 +706,14 @@ array set jsqlsh_config {
     null        "NULL"
     page        1
     pager       ""
-    rows        0
     ps1         "#"
     ps2         "?"
     quote       "\""
+    rows        0
     sep         ","
     term_height 0
     term_width  0
+    trunc       1
 }
 
 # Set defaults.
@@ -705,6 +738,7 @@ array set jsqlsh_user_opts {
     ps2     "More prompt. Text"
     quote   "The quote character for CSV mode. Text"
     sep     "Field separator for CSV & List modes. Text"
+    trunc   "Truncate long rows to fit the screen. Bool"
 }
 set jsqlsh_user_opts(mode) "The output Format. ([join $jsqlsh_config(modes) ", "]) Text"
 
@@ -717,9 +751,7 @@ jsqlsh.cmd_opts jsqlsh_config
 set jsqlsh_config(prompt) $jsqlsh_config(ps1)
 
 if {$jsqlsh_config(debug)} {
-    jsqlsh.debug "Configuration"                                        \
-        [join [lmap item [array names jsqlsh_config]                    \
-            { format "%-15s => %s" $item $jsqlsh_config($item) }] "\n"]
+    jsqlsh.debug "Configuration" [jsqlsh.dump_settings $jsqlsh_config]
 }
 
 # Start the shell.
