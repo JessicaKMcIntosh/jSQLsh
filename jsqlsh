@@ -362,7 +362,7 @@ proc jsqlsh.handle_cmd_go {&config db} {
 }
 
 # jsqlsh.handle_cmd_set - Handle the user command '/set'. {{{2
-proc jsqlsh.handle_cmd_set {&config input option} {
+proc jsqlsh.handle_cmd_set {&config option} {
     global jsqlsh_user_opts
 
     # Display settings if no option.
@@ -438,7 +438,7 @@ proc jsqlsh.handle_cmd_set {&config input option} {
 }
 
 # jsqlsh.handle_cmd_open - Handle the user command '/o'. {{{2
-proc jsqlsh.handle_cmd_open {&config &db input option} {
+proc jsqlsh.handle_cmd_open {&config &db option} {
     # List files and directories if there are no files.
     if {$option eq ""} {
         puts "Pwd: [pwd]/ (*$config(ext))"
@@ -480,6 +480,52 @@ proc jsqlsh.handle_cmd_open {&config &db input option} {
     }
 }
 
+# jsqlsh.handle_cmd_user_macro - Handle user defined macros. {{{2
+proc jsqlsh.handle_cmd_user_macro {&config input option} {
+    global jsqlsh_user_macros
+
+    if {[regexp {[0-9]+$} $input macro]} {
+        if {$option ne ""} {
+            # Defining a macro.
+            if {$option eq "-"} {
+                if {$config(buffer) ne ""} {
+                    set jsqlsh_user_macros($macro) $config(buffer)
+                } elseif {$config(buffer_prev) ne ""} {
+                    set jsqlsh_user_macros($macro) $config(buffer_prev)
+                } else {
+                    puts "Empty buffer, nothing copied."
+                    return
+                }
+            } else {
+                set jsqlsh_user_macros($macro) $option
+            }
+            puts "Macro '/user$macro' set to:"
+            puts $jsqlsh_user_macros($macro)
+        } else {
+            # Calling a macro.
+            if {![exists jsqlsh_user_macros($macro)} {
+                puts "Undefined user macro '$macro'."
+                puts "Please define with '/user$macro -' to copy the query buffer"
+                puts "or '/user$macro SQL' to set to specific SQL."
+                return
+            }
+
+            set config(buffer) $jsqlsh_user_macros($macro)
+            puts $config(buffer)
+        }
+        return
+    }
+
+    puts "User Macros:"
+    foreach macro [array names jsqlsh_user_macros] {
+        set lines [split $jsqlsh_user_macros($macro) "\r\n"]
+        puts [format "/user%-3s => %s" $macro [lindex $lines 0]]
+        foreach line [lrange $lines 1 end] {
+            puts [format "%12s%s" " " $line]
+        }
+    }
+}
+
 # jsqlsh.handle_input - Handle user input. {{{2
 proc jsqlsh.jsqlsh.handle_input {&config &db input} {
     if {[string length $input] == 0} {
@@ -490,8 +536,8 @@ proc jsqlsh.jsqlsh.handle_input {&config &db input} {
     if {!$config(dumb) && [string index $input 0] eq "/"} {
         set option ""
         if {[set index [string first " " $input]] > 0} {
-            incr index
             set option [string trim [string range $input $index end]]
+            set input [string trim [string range $input 0 $index]]
         }
         switch -glob -- $input {
             /A  { set config(auto) [expr {!$config(auto)}] }
@@ -503,17 +549,17 @@ proc jsqlsh.jsqlsh.handle_input {&config &db input} {
             /go { jsqlsh.handle_cmd_go config $db; return }
             /\\? -
             /h* { jsqlsh.help }
-            /o* { jsqlsh.handle_cmd_open config db $input $option }
+            /o* { jsqlsh.handle_cmd_open config db $option }
             /P  { set config(page) [expr {!$config(page)}] }
             /p* { if {$config(buffer) ne ""} { puts $config(buffer) } }
             /q* { jsqlsh.goodbye config $db }
-            /s* { jsqlsh.handle_cmd_set config $input $option }
+            /s* { jsqlsh.handle_cmd_set config $option }
             /S* { puts [jsqlsh.dump_settings $config] }
+            /u* { jsqlsh.handle_cmd_user_macro config $input $option }
             default { puts "Unknown option. Type '/h' for help"; return }
         
         }
-        readline.addhistory $input
-        return
+        return 1
     }
 
     # Add the input to the buffer.
@@ -533,6 +579,7 @@ proc jsqlsh.jsqlsh.handle_input {&config &db input} {
     if {$config(buffer) ne ""} {
         set config(prompt) $config(ps2)
     }
+    return
 }
 
 # jsqlsh.help - Print the help text. {{{2
@@ -556,6 +603,9 @@ proc jsqlsh.help {} {
     puts "  /s(et)      Set/List configuration options. '/s OPTION VALUE'"
     puts "              Values are treated as TCL strings and can be quoted."
     puts "  /q(uit)     Quit jsqlsh. (Also Ctrl-D)"
+    puts "  /u(ser)     Display the user macros."
+    puts "  /u(ser)#    Copy user macro # into the query buffer."
+    puts "  /u(ser)# -  Copy the query buffer, or supplied text, into macro #."
 }
 
 # jsqlsh.opendb - Open the database. {{{2
@@ -605,12 +655,18 @@ proc jsqlsh.shell {&config} {
     set db [jsqlsh.welcome config]
 
     # Infinite loop!
+    set prev_input ""
     while 1 {
         # Prompt for user input.
         set input [jsqlsh.prompt config $db]
 
         # Handle their input.
-        jsqlsh.jsqlsh.handle_input config db $input
+        if {[jsqlsh.jsqlsh.handle_input config db $input]} {
+            if {$input ne $prev_input} {
+                readline.addhistory $input
+            }
+            set prev_input $input
+        }
 
     }
 }
@@ -720,6 +776,9 @@ array set jsqlsh_config {
 set jsqlsh_config(editor) [env EDITOR "vi"]
 set jsqlsh_config(pager) [env PAGER "more"]
 jsqlsh.term_info jsqlsh_config
+
+# User Macros.
+array set jsqlsh_user_macros {}
 
 # User settable options.
 # Contains the option names and descriptions.
