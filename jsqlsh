@@ -9,14 +9,73 @@
 # For more on Jim see http://jim.berlios.de/
 
 # There are things about the SQLite command shell that annoy me.
-# Since there are no easily modified command line SQL clients, so I wrote my
-# own. This is also my first foray in TCL programming.
+# Since there are no easily modified command line SQL clients,
+# so I wrote my own. This is also my first foray in TCL programming.
 
 # XXX Packages {{{1
 package require readline
 package require sqlite3
 
-# XXX Internal Queries {{{1
+# XXX Configuration {{{1
+
+# The configuration array. {{{2
+# Note: Command /S will display all settings.
+array set jsqlsh_config {
+    auto        0
+    buffer      ""
+    buffer_prev ""
+    db_name     ":memory:"
+    debug       0
+    dumb        0
+    editor      ""
+    escape      "\\\\"
+    ext         ".sq3"
+    header      1
+    mode        "table"
+    modes       "csv list table tcl"
+    null        "NULL"
+    page        1
+    pager       ""
+    ps1         "#"
+    ps2         "?"
+    quiet       1
+    quiet_temp  0
+    quote       "\""
+    rows        0
+    sep         ","
+    term_height 0
+    term_width  0
+    trunc       1
+}
+
+# User Macros.
+array set jsqlsh_user_macros {}
+
+# User settable options. {{{2
+# Contains the option names and descriptions.
+# The word at the end is used in processing the options.
+# Users can only set/see options defined in this array.
+# Note: Command /S will display all settings.
+array set jsqlsh_user_opts {
+    auto    "Automatically execute SQL ending with ';'. Bool"
+    debug   "Controls debugging mode. (Very Verbose!) Bool"
+    editor  "The editor program for editing queries. Text"
+    ext     "SQLite file extension. Text"
+    escape  "The escape character for CSV mode. Text"
+    header  "If table headers should be printed. Bool"
+    null    "The value that represents SQL NULLs. Text"
+    page    "Use the 'pager' program for long results. Bool"
+    pager   "The pager program for long results. Text"
+    ps1     "Main prompt. Text"
+    ps2     "More prompt. Text"
+    quiet   "Disables informational messages. Bool"
+    quote   "The quote character for CSV mode. Text"
+    sep     "Field separator for CSV & List modes. Text"
+    trunc   "Truncate long rows to fit the screen. Bool"
+}
+set jsqlsh_user_opts(mode) "The output Format. ([join $jsqlsh_config(modes) ", "]) Text"
+
+# Internal Queries {{{2
 array set jsqlsh_queries {
 describe_object
 "SELECT
@@ -68,8 +127,27 @@ proc jsqlsh.cmd_opts {&config} {
     global argv
     if {$argv eq ""} { return }
 
+    proc try_file {&config create_db arg} {
+        if {$create_db} {
+            if {[jsqlsh.check_file $arg]} {
+                puts "The file '$arg' already exists!"
+                exit 1
+            }
+            set config(db_name) $arg
+        }
+        if {[jsqlsh.check_file $arg]} {
+            set config(db_name) $arg
+        } else {
+            jsqlsh.usage"Error: Could not read the file '$arg'!"
+        }
+    }
+
     set create_db 0
+    set double_dash 0
     foreach arg $argv {
+        if {$double_dash} {
+            return [try_file config $create_db $arg]
+        }
         switch -glob -- $arg {
             -a  { set config(auto) 1 }
             --h* -
@@ -77,26 +155,12 @@ proc jsqlsh.cmd_opts {&config} {
             -c  { set create_db 1 }
             -d  { set config(dumb) 1; set config(auto) 1 }
             -D  { set config(debug) 1 }
-            -s* {
-                jsqlsh.handle_cmd_set config $arg [
-                    regsub "=" [string range $arg 2 end] " "]
-            }
-            default {
-                if {$create_db} {
-                    if {[jsqlsh.check_file $arg]} {
-                        puts "The file '$arg' already exists!"
-                        exit 1
-                    }
-                    set config(db_name) $arg
-                }
-                if {[jsqlsh.check_file $arg]} {
-                    set config(db_name) $arg
-                } else {
-                    puts "Error: Could not read the file '$arg'!"
-                    puts ""
-                    jsqlsh.usage
-                }
-            }
+            -q  { set config(quiet_temp) [set config(quiet) 1] }
+            -s* { jsqlsh.handle_cmd_set config [
+                    regsub "=" [string range $arg 2 end] " "] }
+            --  { set double_dash 1 }
+            -*  { jsqlsh.usage "Unknown option '$arg'." }
+            default { try_file config $create_db $arg }
         }
     }
 }
@@ -262,9 +326,24 @@ proc jsqlsh.display_tcl {config output headers channel} {
 }
 
 # jsqlsh.dump_settings - Return the settings as a big string. {{{2
-proc jsqlsh.dump_settings {config} {
-    join [lmap item [array names config] {
-        format "%-15s => %s" $item $config($item)}] "\n"
+proc jsqlsh.dump_settings {config all} {
+    global jsqlsh_user_opts
+    if ($all) {
+        set item_list [array names config]
+    } else {
+        set item_list [array names jsqlsh_user_opts]
+    }
+
+    foreach item [lsort $item_list] {
+        set descr [expr {$all ? "" : $jsqlsh_user_opts($item)}]
+        set value $config($item)
+        if {[string range $descr end-3 end] eq "Bool"} {
+            set value [expr {$value ? "True" : "False"}]
+        } else {
+            set value "'$value'"
+        }
+        puts [format "%-10s => %-10s %s" $item $value $descr]
+    }
 }
 
 # jsqlsh.exec_query - Execute a query returning the output. {{{2
@@ -285,8 +364,8 @@ proc jsqlsh.exec_query {&config db query args} {
 
 # jsqlsh.goodbye - Say goodbye and close the database. {{{2
 proc jsqlsh.goodbye {&config db} {
-    puts ""
-    puts "Goodbye!"
+    jsqlsh.put_info $config ""          \
+                            "Goodbye!"
     $db close
     exit
 }
@@ -332,15 +411,26 @@ proc jsqlsh.handle_cmd_edit {&config} {
         return
     }
 
-    set temp_name [file tempfile]
+    set temp_name [file tempfile "/tmp/jsqlsh.tmp.XXXXXX"]
+    set ret [catch {file rename $temp_name [set temp_name "$temp_name.sql"]}]
+    if {$ret} {
+        puts "Unable to create/rename a temporary file."
+        return
+    }
+
     if {![file owned $temp_name] || ![file writable $temp_name]} {
         puts "Error creating the temporary file."
         puts "Created '$temp_name' but now the permissions are wrong."
         puts "Aborting editing the buffer..."
         return
     }
+
     set temp_chan [open $temp_name "w"]
-    puts $temp_chan $config(buffer)
+    if {$config(buffer) ne ""} {
+        puts $temp_chan $config(buffer)
+    } elseif {$config(buffer_prev) ne ""} {
+        puts $temp_chan $config(buffer_prev)
+    }
     close $temp_chan
 
     catch -signal {exec >@stdout 2>@stderr $config(editor) $temp_name}
@@ -351,16 +441,16 @@ proc jsqlsh.handle_cmd_edit {&config} {
     file delete $temp_name
 
     set config(buffer) $new_buffer
-    puts "Query buffer now contains:"
-    puts $new_buffer
-    puts ""
+    jsqlsh.put_info $config "Query buffer now contains:"    \
+                            $new_buffer                     \
+                            ""
 }
 
 # jsqlsh.handle_cmd_go - Handle the user command '/go'. {{{2
 proc jsqlsh.handle_cmd_go {&config db} {
     set output [jsqlsh.exec_query config $db $config(buffer)]
     set config(rows) [jsqlsh.display config $output]
-    puts "$config(rows) row(s) returned"
+    jsqlsh.put_info $config "$config(rows) row(s) returned"
     if {$config(buffer) ne $config(buffer_prev)} {
         readline.addhistory $config(buffer)
     }
@@ -375,17 +465,7 @@ proc jsqlsh.handle_cmd_set {&config option} {
 
     # Display settings if no option.
     if {$option eq ""} {
-        foreach item [lsort [array names jsqlsh_user_opts]] {
-            set descr $jsqlsh_user_opts($item)
-            set value $config($item)
-            if {[string range $descr end-3 end] eq "Bool"} {
-                set value [expr {$value ? "True" : "False"}]
-            } else {
-                set value "'$value'"
-            }
-            puts [format "%-10s => %-10s %s" $item $value $descr]
-        }
-        return
+        return [jsqlsh.dump_settings $config 0]
     }
 
     # Get the specified value, or present an error.
@@ -507,8 +587,9 @@ proc jsqlsh.handle_cmd_user_macro {&config input option} {
             } else {
                 set jsqlsh_user_macros($macro) $option
             }
-            puts "Macro '/user$macro' set to:"
-            puts $jsqlsh_user_macros($macro)
+            jsqlsh.put_info $config "Macro '/user$macro' set to:"   \
+                                    $jsqlsh_user_macros($macro)     \
+                                    ""
         } else {
             # Calling a macro.
             if {![exists jsqlsh_user_macros($macro)} {
@@ -519,7 +600,9 @@ proc jsqlsh.handle_cmd_user_macro {&config input option} {
             }
 
             set config(buffer) $jsqlsh_user_macros($macro)
-            puts $config(buffer)
+            jsqlsh.put_info $config "Query buffer now contains:"    \
+                                    $config(buffer)                 \
+                                    ""
         }
         return
     }
@@ -561,9 +644,10 @@ proc jsqlsh.handle_input {&config &db input} {
             /o* { jsqlsh.handle_cmd_open config db $option }
             /P  { set config(page) [expr {!$config(page)}] }
             /p* { if {$config(buffer) ne ""} { puts $config(buffer) } }
+            /Q* { set config(quiet_temp) [set config(quiet) [expr {!$config(quiet)}]] }
             /q* { jsqlsh.goodbye config $db }
             /s* { jsqlsh.handle_cmd_set config $option }
-            /S* { puts [jsqlsh.dump_settings $config] }
+            /S* { puts [jsqlsh.dump_settings $config 1] }
             /u* { jsqlsh.handle_cmd_user_macro config $input $option }
             default { puts "Unknown option. Type '/h' for help"; return }
         
@@ -605,6 +689,7 @@ proc jsqlsh.help {} {
     puts "  /p(rint)    Print the query buffer."
     puts "  /s(et)      Set/List configuration options. '/s OPTION VALUE'"
     puts "              Values are treated as TCL strings and can be quoted."
+    puts "  /Q          Toggle the quiet option state."
     puts "  /q(uit)     Quit jsqlsh. (Also Ctrl-D)"
     puts "  /u(ser)     Display the user macros."
     puts "  /u(ser)#    Copy user macro # into the query buffer."
@@ -613,7 +698,7 @@ proc jsqlsh.help {} {
 
 # jsqlsh.load_rc_file - Load the configuration file. {{{2
 proc jsqlsh.load_rc_file {&config} {
-    puts "Loading configuration from '$config(rc_file)'."
+    #puts "Loading configuration from '$config(rc_file)'."
 
     set rc_chan [open $config(rc_file) "r"]
     set rc_data [read -nonewline $rc_chan]
@@ -634,12 +719,12 @@ proc jsqlsh.load_rc_file {&config} {
         jsqlsh.handle_input config db $line
     }
 
-    puts ""
+    #puts ""
 }
 
 # jsqlsh.opendb - Open the database. {{{2
 proc jsqlsh.opendb {&config} {
-    puts "Opening the database '$config(db_name)'."
+    jsqlsh.put_info $config "Opening the database '$config(db_name)'."
     set ret [catch {set db [sqlite3.open $config(db_name)]} error]
     if {$ret != 0} {
         puts "Error opening the database!"
@@ -676,6 +761,15 @@ proc jsqlsh.prompt {&config db} {
     }
 
     return $output
+}
+
+# jsqlsh.put_info - Print informational text if config(quiet) is not set. {{{2
+proc jsqlsh.put_info {config args} {
+    if {!$config(quiet)} {
+        foreach arg $args {
+            puts $arg
+        }
+    }
 }
 
 # jsqlsh.shell - The main loop to handle user input. {{{2
@@ -745,8 +839,14 @@ proc jsqlsh.term_info {&config} {
 }
 
 # jsqlsh.usage - Print the command line usage. {{{2
-proc jsqlsh.usage {} {
+proc jsqlsh.usage {{comment ""}} {
     global argv0
+
+    if {$comment ne ""} {
+        puts $comment
+        puts ""
+    }
+
     puts "Usage: [file tail $argv0] \[Options\] \[SQLite File\]"
     puts ""
     puts "Open the specified SQLite database file."
@@ -766,74 +866,22 @@ proc jsqlsh.usage {} {
 
 # jsqlsh.welcome - Print the welcome message and open the database. {{{2
 proc jsqlsh.welcome {&config} {
-    puts "Welcome to the SQLite Shell in Jim TCL [info version]."
+    jsqlsh.put_info $config "Welcome to the SQLite Shell in Jim TCL [info version]."
     set db [jsqlsh.opendb config]
-    puts "To execute the query type '/'."
-    puts "For help type '/h'."
-    puts ""
+    jsqlsh.put_info $config "To execute the query type '/'."    \
+                            "For help type '/h'."               \
+                            ""
 
     return $db
 }
 
-
-# XXX Configuration and Setup. {{{1
-
-# The configuration array.
-array set jsqlsh_config {
-    auto        0
-    buffer      ""
-    buffer_prev ""
-    db_name     ":memory:"
-    debug       0
-    dumb        0
-    editor      ""
-    escape      "\\\\"
-    ext         ".sq3"
-    header      1
-    mode        "table"
-    modes       "csv list table tcl"
-    null        "NULL"
-    page        1
-    pager       ""
-    ps1         "#"
-    ps2         "?"
-    quote       "\""
-    rows        0
-    sep         ","
-    term_height 0
-    term_width  0
-    trunc       1
-}
+# XXX Startup and Initialization {{{1
 
 # Set defaults.
 set jsqlsh_config(editor) [env EDITOR "vi"]
 set jsqlsh_config(pager) [env PAGER "more"]
 set jsqlsh_config(rc_file) "[env HOME ""]/.[file tail $argv0]rc"
 jsqlsh.term_info jsqlsh_config
-
-# User Macros.
-array set jsqlsh_user_macros {}
-
-# User settable options.
-# Contains the option names and descriptions.
-# The word at the end is used in processing the options.
-array set jsqlsh_user_opts {
-    auto    "Automatically execute SQL ending with ';'. Bool"
-    debug   "Controls debugging mode. (Very Verbose!) Bool"
-    editor  "The editor program for editing queries. Text"
-    ext     "SQLite file extension. Text"
-    escape  "The escape character for CSV mode. Text"
-    header  "If table headers should be printed. Bool"
-    null    "The value that represents SQL NULLs. Text"
-    page    "Use the 'pager' program for long results. Bool"
-    pager   "The pager program for long results. Text"
-    ps1     "Main prompt. Text"
-    ps2     "More prompt. Text"
-    quote   "The quote character for CSV mode. Text"
-    sep     "Field separator for CSV & List modes. Text"
-    trunc   "Truncate long rows to fit the screen. Bool"
-}
-set jsqlsh_user_opts(mode) "The output Format. ([join $jsqlsh_config(modes) ", "]) Text"
 
 # Read the rc file.
 if {[jsqlsh.check_file $jsqlsh_config(rc_file)]} {
@@ -848,8 +896,17 @@ set jsqlsh_config(prompt) $jsqlsh_config(ps1)
 
 # Show all settings on Debug mode.
 if {$jsqlsh_config(debug)} {
-    jsqlsh.debug "Configuration" [jsqlsh.dump_settings $jsqlsh_config]
+    jsqlsh.debug "Configuration" [jsqlsh.dump_settings $jsqlsh_config 1]
 }
+
+# Quiet is in effect during initialization.
+# Don't want to flood the user with garbage.
+#
+# After initialization set quiet to quiet_temp.
+# Quiet_temp is set by the command line options
+# and the user input handler.
+# So if the user really wants "quiet" they get it.
+set jsqlsh_config(quiet) $jsqlsh_config(quiet_temp)
 
 # Start the shell.
 signal ignore SIGINT
