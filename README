@@ -4,3 +4,12 @@ Lorance Stinson - Lorance Stinson AT gmail DOT com
 There are things about the SQLite command shell that annoy me.
 Since there are no easily modified command line SQL clients, so I wrote my
 own. This is also my first foray in TCL programming.
+
+Requires Jim TCL compiled with at least the following configuration options:
+    ./configure --with-ext="readline sqlite3"
+
+Online help is available with the '/h' command.
+
+The file '~/.jsqlshrc' is loaded on startup.
+Place custom settings here, like user macros.
+This file can only contain comments '#' and '/' commands.

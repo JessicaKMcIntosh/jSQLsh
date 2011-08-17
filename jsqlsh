@@ -45,7 +45,7 @@ array set jsqlsh_config {
     sep         ","
     term_height 0
     term_width  0
-    trunc       1
+    trunc       0
 }
 
 # User Macros.
@@ -118,8 +118,18 @@ ORDER BY m.name"
 # XXX Procedures {{{1
 
 # jsqlsh.check_file - Check if a file exists and is readable. {{{2
-proc jsqlsh.check_file {file_name} {
-    return [expr {[file exists $file_name] && [file readable $file_name]}]
+# Returns a file name if a file is found.
+# Trys the file name with the defailt extension if $try_ext.
+proc jsqlsh.check_file {config file_name {try_ext 0}} {
+    if {[file exists $file_name] && [file readable $file_name]} {
+        return $file_name
+    }
+
+    set file_name "$file_name$config(ext)"
+    if {$try_ext && [file exists $file_name] && [file readable $file_name]} {
+        return $file_name
+    }
+    return ""
 }
 
 # jsqlsh.cmd_opts - Process command line options. {{{2
@@ -128,15 +138,16 @@ proc jsqlsh.cmd_opts {&config} {
     if {$argv eq ""} { return }
 
     proc try_file {&config create_db arg} {
+        set file_name [jsqlsh.check_file $config $arg 1]
         if {$create_db} {
-            if {[jsqlsh.check_file $arg]} {
-                puts "The file '$arg' already exists!"
+            if {$file_name ne ""} {
+                puts "The file '$file_name' already exists!"
                 exit 1
             }
-            set config(db_name) $arg
+            set config(db_name) $file_name
         }
-        if {[jsqlsh.check_file $arg]} {
-            set config(db_name) $arg
+        if {$file_name ne ""} {
+            set config(db_name) $file_name
         } else {
             jsqlsh.usage"Error: Could not read the file '$arg'!"
         }
@@ -252,7 +263,7 @@ proc jsqlsh.display_list {config output headers channel} {
 proc jsqlsh.display_table {config output headers channel} {
     proc print_row {data {sep " |"}} {
         upvar channel channel
-        puts $channel [join [uplevel "lmap col \$headers {$data}"] $sep]
+        puts $channel [string trimright [join [uplevel "lmap col \$headers {$data}"] $sep]]
     }
 
     # Set the column widths.
@@ -337,10 +348,9 @@ proc jsqlsh.dump_settings {config all} {
     foreach item [lsort $item_list] {
         set descr [expr {$all ? "" : $jsqlsh_user_opts($item)}]
         set value $config($item)
-        if {[string range $descr end-3 end] eq "Bool"} {
+        set value "'$value'"
+        if {$all && [string range $descr end-3 end] eq "Bool"} {
             set value [expr {$value ? "True" : "False"}]
-        } else {
-            set value "'$value'"
         }
         puts [format "%-10s => %-10s %s" $item $value $descr]
     }
@@ -513,7 +523,7 @@ proc jsqlsh.handle_cmd_set {&config option} {
         # Make sure the output mode is valid.
         set value [string tolower $value]
         if {[string tolower $value] ni $config(modes)} {
-            puts "Invalid setting for mode."
+            puts "Invalid setting for 'mode'."
             puts "Must be one of ([join $config(modes) ", "])."
             return
         }
@@ -558,8 +568,7 @@ proc jsqlsh.handle_cmd_open {&config &db option} {
     # Attempt to open the file.
     set file_name $option
     if {$file_name eq ":memory:" ||
-        [jsqlsh.check_file $file_name] ||
-        [jsqlsh.check_file [set file_name "$file_name$config(ext)"]]} {
+        [set file_name [jsqlsh.check_file $config $option 1]] ne ""} {
         $db close
         set config(db_name) $file_name
         set db [jsqlsh.opendb config]
@@ -699,27 +708,22 @@ proc jsqlsh.help {} {
 # jsqlsh.load_rc_file - Load the configuration file. {{{2
 proc jsqlsh.load_rc_file {&config} {
     #puts "Loading configuration from '$config(rc_file)'."
-
-    set rc_chan [open $config(rc_file) "r"]
-    set rc_data [read -nonewline $rc_chan]
-    close $rc_chan
-
     set db ""
-    foreach line [split $rc_data "\f\n"] {
+    set rc_chan [open $config(rc_file) "r"]
+    while {[gets $rc_chan line] >= 0} {
         set line [string trim $line]
         if {$line eq "" || [string index $line 0] eq "#"} {
             continue
         }
         if {[string index $line 0] ne "/"} {
             puts "Invalid line: $line"
-            puts "Configuration must be valid jSQLsh commands."
+            puts "Configuration must be valid jSQLsh '/' commands."
             continue
         }
 
         jsqlsh.handle_input config db $line
     }
-
-    #puts ""
+    close $rc_chan
 }
 
 # jsqlsh.opendb - Open the database. {{{2
@@ -884,7 +888,7 @@ set jsqlsh_config(rc_file) "[env HOME ""]/.[file tail $argv0]rc"
 jsqlsh.term_info jsqlsh_config
 
 # Read the rc file.
-if {[jsqlsh.check_file $jsqlsh_config(rc_file)]} {
+if {[jsqlsh.check_file $jsqlsh_config $jsqlsh_config(rc_file)] ne ""} {
     jsqlsh.load_rc_file jsqlsh_config
 }
 
