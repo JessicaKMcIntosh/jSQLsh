@@ -377,6 +377,7 @@ proc jsqlsh.goodbye {&config db} {
     jsqlsh.put_info $config ""          \
                             "Goodbye!"
     $db close
+    jsqlsh.history_close config
     exit
 }
 
@@ -462,7 +463,7 @@ proc jsqlsh.handle_cmd_go {&config db} {
     set config(rows) [jsqlsh.display config $output]
     jsqlsh.put_info $config "$config(rows) row(s) returned"
     if {$config(buffer) ne $config(buffer_prev)} {
-        readline.addhistory $config(buffer)
+        jsqlsh.history_write $config $config(buffer)
     }
     set config(buffer_prev) $config(buffer)
     set config(buffer) ""
@@ -685,9 +686,7 @@ proc jsqlsh.help {} {
     puts "  /c(lear)    Clear the query buffer"
     puts "  /D          Toggle the debug option state."
     puts "  /d          Display all objects in the database."
-    puts "  /di         Display all indexes."
-    puts "  /dt         Display all tables."
-    puts "  /dv         Display all views."
+    puts "  /d\[itv\]     Display all indexes (/di) / tables (/dt) / views (/dv)."
     puts "  /d OBJ      Describe the object OBJ."
     puts "  /ds OBJ     Displays the schema for the object OBJ."
     puts "  /e(dit)     Edit the query buffer."
@@ -703,6 +702,50 @@ proc jsqlsh.help {} {
     puts "  /u(ser)     Display the user macros."
     puts "  /u(ser)#    Copy user macro # into the query buffer."
     puts "  /u(ser)# -  Copy the query buffer, or supplied text, into macro #."
+}
+
+# jsqlsh.history_close - Close the history file. {{{2
+proc jsqlsh.history_close {&config} {
+    if {[array exists config(hist_chan)]} {
+        close $config(hist_chan)
+        array unset config(hist_chan)
+    }
+}
+
+# jsqlsh.history_load - Load the history file into readline. {{{2
+proc jsqlsh.history_load {&config} {
+    if {[jsqlsh.check_file $config $config(hist_file)] eq ""} {
+        return
+    }
+    set hist_chan [open $config(hist_file) "r"]
+    if {$hist_chan eq ""} {
+        return
+    }
+    while {[gets $hist_chan line] >= 0} {
+        readline.addhistory $line
+    }
+    close $hist_chan
+}
+
+# jsqlsh.history_open_append - Open the history. {{{2
+proc jsqlsh.history_open_append {&config} {
+    set hist_chan [open $config(hist_file) "a"]
+    if {$hist_chan eq ""} {
+        puts "Unable to open/create the history file '$config(hist_file)'."
+        return
+    }
+    set config(hist_chan) $hist_chan
+}
+
+# jsqlsh.history_write - Write a line to the history file. {{{2
+proc jsqlsh.history_write {config line} {
+    readline.addhistory $line
+    if {![array exists config(hist_chan)]} {
+        return
+    }
+    set hist_chan $config(hist_chan)
+    puts $hist_chan $line
+    flush $hist_chan
 }
 
 # jsqlsh.load_rc_file - Load the configuration file. {{{2
@@ -735,8 +778,8 @@ proc jsqlsh.opendb {&config} {
         puts "Code: $ret Error: $error"
         exit 1
     }
-    if {[env HOME ""] ne ""} {
-        set config(db_name) [jsqlsh.replace $config(db_name) [env HOME] "~"]
+    if {$config(user_home) ne ""} {
+        set config(db_name) [jsqlsh.replace $config(db_name) $config(user_home) "~"]
     }
     return $db
 }
@@ -790,7 +833,7 @@ proc jsqlsh.shell {&config} {
         # Handle their input.
         if {[jsqlsh.handle_input config db $input] ne ""} {
             if {$input ne $prev_input} {
-                readline.addhistory $input
+                jsqlsh.history_write $config $input
             }
             set prev_input $input
         }
@@ -882,9 +925,10 @@ proc jsqlsh.welcome {&config} {
 # XXX Startup and Initialization {{{1
 
 # Set defaults.
-set jsqlsh_config(editor) [env EDITOR "vi"]
-set jsqlsh_config(pager) [env PAGER "more"]
-set jsqlsh_config(rc_file) "[env HOME ""]/.[file tail $argv0]rc"
+set jsqlsh_config(editor)    [env EDITOR "vi"]
+set jsqlsh_config(pager)     [env PAGER "more"]
+set jsqlsh_config(user_home) [env HOME ""]
+set jsqlsh_config(rc_file)   "$jsqlsh_config(user_home)/.[file tail $argv0]rc"
 jsqlsh.term_info jsqlsh_config
 
 # Read the rc file.
@@ -911,6 +955,13 @@ if {$jsqlsh_config(debug)} {
 # and the user input handler.
 # So if the user really wants "quiet" they get it.
 set jsqlsh_config(quiet) $jsqlsh_config(quiet_temp)
+
+# Load the history file then open it for append.
+if {$jsqlsh_config(user_home) ne ""} {
+    set jsqlsh_config(hist_file) "$jsqlsh_config(user_home)/.[file tail $argv0]_history"
+    jsqlsh.history_load jsqlsh_config
+    jsqlsh.history_open_append jsqlsh_config
+}
 
 # Start the shell.
 signal ignore SIGINT
