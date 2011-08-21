@@ -148,28 +148,37 @@ proc jsqlsh.cmd_opts {&config} {
         if {$file_name ne ""} {
             set config(db_name) $file_name
         } else {
-            jsqlsh.usage"Error: Could not read the file '$arg'!"
+            jsqlsh.usage "Error: Could not read the file '$arg'!"
         }
     }
 
+    proc load_setting {&config setting} {
+        jsqlsh.handle_cmd_set config [regsub "=" $setting " "]
+    }
+
     set create_db 0
-    set double_dash 0
+    set arg_mode ""
     foreach arg $argv {
-        if {$double_dash} {
+        if {$arg_mode == "D"} {
             return [try_file config $create_db $arg]
+        } elseif {$arg_mode == "S"} {
+            load_setting config $arg
+            set arg_mode ""
+            continue
         }
+
         switch -glob -- $arg {
-            -a  { set config(auto) 1 }
-            --h* -
-            -h* { jsqlsh.usage }
-            -c  { set create_db 1 }
-            -d  { set config(dumb) 1; set config(auto) 1 }
-            -D  { set config(debug) 1 }
-            -q  { set config(quiet_temp) [set config(quiet) 1] }
-            -s* { jsqlsh.handle_cmd_set config [
-                    regsub "=" [string range $arg 2 end] " "] }
-            --  { set double_dash 1 }
-            -*  { jsqlsh.usage "Unknown option '$arg'." }
+            -a      { set config(auto) 1 }
+            --h*    -
+            -h*     { jsqlsh.usage }
+            -c      { set create_db 1 }
+            -d      { set config(dumb) 1; set config(auto) 1 }
+            -D      { set config(debug) 1 }
+            -q      { set config(quiet_temp) [set config(quiet) 1] }
+            -s      { set arg_mode "S" }
+            -s*     { load_setting config [string range $arg 2 end] }
+            --      { set arg_mode "D" }
+            -*      { jsqlsh.usage "Unknown option '$arg'." }
             default { try_file config $create_db $arg }
         }
     }
@@ -179,11 +188,13 @@ proc jsqlsh.cmd_opts {&config} {
 proc jsqlsh.debug {caller {output ""} args} {
     set dtime [clock format [clock seconds] -format "%Y-%m-%d %I:%M %p"]
     puts "DEBUG: ($caller) $dtime"
+
     if {$output ne ""} {
         foreach line [split $output "\n\r"] {
             puts "DEBUG: $line"
         }
     }
+
     if {[llength $args]} {
         foreach line $args {
             puts "ARGS: $line"
@@ -386,11 +397,11 @@ proc jsqlsh.handle_cmd_describe {&config db input option} {
     set query ""
     set arg {}
     switch -glob -- $input {
-        /d  { set query $jsqlsh_queries(display_objects) }
-        /di { set query $jsqlsh_queries(display_indexes) }
-        /dt { set query $jsqlsh_queries(display_tables) }
-        /dv { set query $jsqlsh_queries(display_views) }
-        /ds* {
+        /d      { set query $jsqlsh_queries(display_objects) }
+        /di     { set query $jsqlsh_queries(display_indexes) }
+        /dt     { set query $jsqlsh_queries(display_tables) }
+        /dv     { set query $jsqlsh_queries(display_views) }
+        /ds*    {
             if {$option eq ""} {
                 puts "Please provide an object to display schema for."
                 return
@@ -641,23 +652,23 @@ proc jsqlsh.handle_input {&config &db input} {
             set input [string trim [string range $input 0 $index]]
         }
         switch -glob -- $input {
-            /A  { jsqlsh.handle_toggle config "auto" }
-            /c* { set config(buffer) ""; set config(prompt) $config(ps1) }
-            /D  { jsqlsh.handle_toggle config "debug" }
-            /d* { jsqlsh.handle_cmd_describe config $db $input $option }
-            /e* { jsqlsh.handle_cmd_edit config }
-            /   -
-            /go { jsqlsh.handle_cmd_go config $db; return }
-            /\\? -
-            /h* { jsqlsh.help }
-            /o* { jsqlsh.handle_cmd_open config db $option }
-            /P  { jsqlsh.handle_toggle config "page" }
-            /p* { if {$config(buffer) ne ""} { puts $config(buffer) } }
-            /Q* { set config(quiet_temp) [jsqlsh.handle_toggle config "quiet"] }
-            /q* { jsqlsh.goodbye config $db }
-            /s* { jsqlsh.handle_cmd_set config $option }
-            /S* { puts [jsqlsh.dump_settings $config 1] }
-            /u* { jsqlsh.handle_cmd_user_macro config $input $option }
+            /A      { jsqlsh.handle_toggle config "auto" }
+            /c*     { set config(buffer) ""; set config(prompt) $config(ps1) }
+            /D      { jsqlsh.handle_toggle config "debug" }
+            /d*     { jsqlsh.handle_cmd_describe config $db $input $option }
+            /e*     { jsqlsh.handle_cmd_edit config }
+            /       -
+            /go     { jsqlsh.handle_cmd_go config $db; return }
+            /\\?    -
+            /h*     { jsqlsh.help }
+            /o*     { jsqlsh.handle_cmd_open config db $option }
+            /P      { jsqlsh.handle_toggle config "page" }
+            /p*     { if {$config(buffer) ne ""} { puts $config(buffer) } }
+            /Q*     { jsqlsh.handle_toggle config "quiet" }
+            /q*     { jsqlsh.goodbye config $db }
+            /s*     { jsqlsh.handle_cmd_set config $option }
+            /S*     { puts [jsqlsh.dump_settings $config 1] }
+            /u*     { jsqlsh.handle_cmd_user_macro config $input $option }
             default { puts "Unknown option. Type '/h' for help"; return }
         
         }
@@ -681,6 +692,9 @@ proc jsqlsh.handle_input {&config &db input} {
 # jsqlsh.handle_toggle - Handle toggling a setting. {{{2
 proc jsqlsh.handle_toggle {&config name} {
     set state [set config($name) [expr {!$config($name)}]]
+    if {$name == "quiet"} {
+        set config(quiet_temp) $state
+    }
     jsqlsh.put_info $config [format "The setting '%s' is now %s." $name \
                                     [expr {$state ? "Enabled" : "Disabled"}]]
     return $state
@@ -774,7 +788,7 @@ proc jsqlsh.init {&config} {
     }
 
     # Process command line options.
-    if {$argv eq ""} {
+    if {$argv ne ""} {
         jsqlsh.cmd_opts config
     }
 
@@ -962,7 +976,6 @@ proc jsqlsh.usage {{comment ""}} {
     puts "    -D            Debug mode. (Copious output!)"
     puts "    -h            Display this text."
     puts "    -s'opt=val'   Set an option as in the '/s' command."
-    puts "                  Must be formatted as specified."
     exit 1
 }
 
