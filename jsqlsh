@@ -135,7 +135,6 @@ proc jsqlsh.check_file {config file_name {try_ext 0}} {
 # jsqlsh.cmd_opts - Process command line options. {{{2
 proc jsqlsh.cmd_opts {&config} {
     global argv
-    if {$argv eq ""} { return }
 
     proc try_file {&config create_db arg} {
         set file_name [jsqlsh.check_file $config $arg 1]
@@ -470,6 +469,48 @@ proc jsqlsh.handle_cmd_go {&config db} {
     set config(prompt) $config(ps1)
 }
 
+# jsqlsh.handle_cmd_open - Handle the user command '/o'. {{{2
+proc jsqlsh.handle_cmd_open {&config &db option} {
+    # List files and directories if there are no files.
+    if {$option eq ""} {
+        puts "Pwd: [pwd]/ (*$config(ext))"
+        set files [lmap file [glob -nocomplain "*"] {
+            if {[file isdirectory $file]} {
+                expr {"$file/"}
+            } else {
+                continue
+            }
+        }]
+        if {$files ne ""} { puts $files }
+        puts ""
+        set files [glob -nocomplain "*$config(ext)"]
+        if {$files ne ""} {
+            puts $files
+        } else {
+            puts "No files found."
+        }
+        return
+    }
+
+    # If a directory CD there.
+    if {[file isdirectory $option]} {
+        puts "cd -> [pwd]"
+        cd $option
+        return
+    }
+
+    # Attempt to open the file.
+    set file_name $option
+    if {$file_name eq ":memory:" ||
+        [set file_name [jsqlsh.check_file $config $option 1]] ne ""} {
+        $db close
+        set config(db_name) $file_name
+        set db [jsqlsh.opendb config]
+    } else {
+        puts "Error: Could not read the file '$option'!"
+    }
+}
+
 # jsqlsh.handle_cmd_set - Handle the user command '/set'. {{{2
 proc jsqlsh.handle_cmd_set {&config option} {
     global jsqlsh_user_opts
@@ -536,48 +577,6 @@ proc jsqlsh.handle_cmd_set {&config option} {
     set config($option) $value
 }
 
-# jsqlsh.handle_cmd_open - Handle the user command '/o'. {{{2
-proc jsqlsh.handle_cmd_open {&config &db option} {
-    # List files and directories if there are no files.
-    if {$option eq ""} {
-        puts "Pwd: [pwd]/ (*$config(ext))"
-        set files [lmap file [glob -nocomplain "*"] {
-            if {[file isdirectory $file]} {
-                expr {"$file/"}
-            } else {
-                continue
-            }
-        }]
-        if {$files ne ""} { puts $files }
-        puts ""
-        set files [glob -nocomplain "*$config(ext)"]
-        if {$files ne ""} {
-            puts $files
-        } else {
-            puts "No files found."
-        }
-        return
-    }
-
-    # If a directory CD there.
-    if {[file isdirectory $option]} {
-        puts "cd -> [pwd]"
-        cd $option
-        return
-    }
-
-    # Attempt to open the file.
-    set file_name $option
-    if {$file_name eq ":memory:" ||
-        [set file_name [jsqlsh.check_file $config $option 1]] ne ""} {
-        $db close
-        set config(db_name) $file_name
-        set db [jsqlsh.opendb config]
-    } else {
-        puts "Error: Could not read the file '$option'!"
-    }
-}
-
 # jsqlsh.handle_cmd_user_macro - Handle user defined macros. {{{2
 proc jsqlsh.handle_cmd_user_macro {&config input option} {
     global jsqlsh_user_macros
@@ -602,7 +601,7 @@ proc jsqlsh.handle_cmd_user_macro {&config input option} {
                                     ""
         } else {
             # Calling a macro.
-            if {![exists jsqlsh_user_macros($macro)} {
+            if {![exists jsqlsh_user_macros($macro)]} {
                 puts "Undefined user macro '$macro'."
                 puts "Please define with '/user$macro -' to copy the query buffer"
                 puts "or '/user$macro SQL' to set to specific SQL."
@@ -642,9 +641,9 @@ proc jsqlsh.handle_input {&config &db input} {
             set input [string trim [string range $input 0 $index]]
         }
         switch -glob -- $input {
-            /A  { set config(auto) [expr {!$config(auto)}] }
+            /A  { jsqlsh.handle_toggle config "auto" }
             /c* { set config(buffer) ""; set config(prompt) $config(ps1) }
-            /D  { set config(debug) [expr {!$config(debug)}] }
+            /D  { jsqlsh.handle_toggle config "debug" }
             /d* { jsqlsh.handle_cmd_describe config $db $input $option }
             /e* { jsqlsh.handle_cmd_edit config }
             /   -
@@ -652,9 +651,9 @@ proc jsqlsh.handle_input {&config &db input} {
             /\\? -
             /h* { jsqlsh.help }
             /o* { jsqlsh.handle_cmd_open config db $option }
-            /P  { set config(page) [expr {!$config(page)}] }
+            /P  { jsqlsh.handle_toggle config "page" }
             /p* { if {$config(buffer) ne ""} { puts $config(buffer) } }
-            /Q* { set config(quiet_temp) [set config(quiet) [expr {!$config(quiet)}]] }
+            /Q* { set config(quiet_temp) [jsqlsh.handle_toggle config "quiet"] }
             /q* { jsqlsh.goodbye config $db }
             /s* { jsqlsh.handle_cmd_set config $option }
             /S* { puts [jsqlsh.dump_settings $config 1] }
@@ -677,6 +676,14 @@ proc jsqlsh.handle_input {&config &db input} {
         set config(prompt) $config(ps2)
     }
     return
+}
+
+# jsqlsh.handle_toggle - Handle toggling a setting. {{{2
+proc jsqlsh.handle_toggle {&config name} {
+    set state [set config($name) [expr {!$config($name)}]]
+    jsqlsh.put_info $config [format "The setting '%s' is now %s." $name \
+                                    [expr {$state ? "Enabled" : "Disabled"}]]
+    return $state
 }
 
 # jsqlsh.help - Print the help text. {{{2
@@ -746,6 +753,54 @@ proc jsqlsh.history_write {config line} {
     set hist_chan $config(hist_chan)
     puts $hist_chan $line
     flush $hist_chan
+}
+
+# jsqlsh.init - Initialize configuration. {{{2
+# Initializes the configuration variable.
+# Processes command line options and the configuration file.
+proc jsqlsh.init {&config} {
+    global argv argv0
+
+    # Set defaults.
+    set config(editor)    [env EDITOR "vi"]
+    set config(pager)     [env PAGER "more"]
+    set config(user_home) [env HOME ""]
+    set config(rc_file)   "$config(user_home)/.[file tail $argv0]rc"
+    jsqlsh.term_info config
+
+    # Read the rc file.
+    if {[jsqlsh.check_file $config $config(rc_file)] ne ""} {
+        jsqlsh.load_rc_file config
+    }
+
+    # Process command line options.
+    if {$argv eq ""} {
+        jsqlsh.cmd_opts config
+    }
+
+    # The initial prompt.
+    set config(prompt) $config(ps1)
+
+    # Show all settings on Debug mode.
+    if {$config(debug)} {
+        jsqlsh.debug "Configuration" [jsqlsh.dump_settings $config 1]
+    }
+
+    # Quiet is in effect during initialization.
+    # Don't want to flood the user with garbage.
+    #
+    # After initialization set quiet to quiet_temp.
+    # Quiet_temp is set by the command line options
+    # and the user input handler.
+    # So if the user really wants "quiet" they get it.
+    set config(quiet) $config(quiet_temp)
+
+    # Load the history file then open it for append.
+    if {$config(user_home) ne ""} {
+        set config(hist_file) "$config(user_home)/.[file tail $argv0]_history"
+        jsqlsh.history_load config
+        jsqlsh.history_open_append config
+    }
 }
 
 # jsqlsh.load_rc_file - Load the configuration file. {{{2
@@ -915,8 +970,10 @@ proc jsqlsh.usage {{comment ""}} {
 proc jsqlsh.welcome {&config} {
     jsqlsh.put_info $config "Welcome to the SQLite Shell in Jim TCL [info version]."
     set db [jsqlsh.opendb config]
-    jsqlsh.put_info $config "To execute the query type '/'."    \
-                            "For help type '/h'."               \
+    if {$config(auto)} {
+        jsqlsh.put_info $config "Queries ending in ';' are automatically executed. (Setting 'auto')"
+    }
+    jsqlsh.put_info $config "To execute a query type '/'. For help type '/h'." \
                             ""
 
     return $db
@@ -924,44 +981,8 @@ proc jsqlsh.welcome {&config} {
 
 # XXX Startup and Initialization {{{1
 
-# Set defaults.
-set jsqlsh_config(editor)    [env EDITOR "vi"]
-set jsqlsh_config(pager)     [env PAGER "more"]
-set jsqlsh_config(user_home) [env HOME ""]
-set jsqlsh_config(rc_file)   "$jsqlsh_config(user_home)/.[file tail $argv0]rc"
-jsqlsh.term_info jsqlsh_config
-
-# Read the rc file.
-if {[jsqlsh.check_file $jsqlsh_config $jsqlsh_config(rc_file)] ne ""} {
-    jsqlsh.load_rc_file jsqlsh_config
-}
-
-# Process command line options.
-jsqlsh.cmd_opts jsqlsh_config
-
-# The initial prompt.
-set jsqlsh_config(prompt) $jsqlsh_config(ps1)
-
-# Show all settings on Debug mode.
-if {$jsqlsh_config(debug)} {
-    jsqlsh.debug "Configuration" [jsqlsh.dump_settings $jsqlsh_config 1]
-}
-
-# Quiet is in effect during initialization.
-# Don't want to flood the user with garbage.
-#
-# After initialization set quiet to quiet_temp.
-# Quiet_temp is set by the command line options
-# and the user input handler.
-# So if the user really wants "quiet" they get it.
-set jsqlsh_config(quiet) $jsqlsh_config(quiet_temp)
-
-# Load the history file then open it for append.
-if {$jsqlsh_config(user_home) ne ""} {
-    set jsqlsh_config(hist_file) "$jsqlsh_config(user_home)/.[file tail $argv0]_history"
-    jsqlsh.history_load jsqlsh_config
-    jsqlsh.history_open_append jsqlsh_config
-}
+# Perform initialization.
+jsqlsh.init jsqlsh_config
 
 # Start the shell.
 signal ignore SIGINT
