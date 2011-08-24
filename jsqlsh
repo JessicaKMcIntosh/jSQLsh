@@ -29,7 +29,7 @@ array set jsqlsh_config {
     dumb        0
     editor      ""
     escape      "\\\\"
-    ext         ".sq3"
+    ext         ".db"
     header      1
     mode        "table"
     modes       "csv list table tcl"
