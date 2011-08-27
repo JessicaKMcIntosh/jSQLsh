@@ -19,7 +19,7 @@ package require sqlite3
 # XXX Configuration {{{1
 
 # The configuration array. {{{2
-# Note: Command /S will display all settings.
+# Note: Command '/S' will display all settings.
 array set jsqlsh_config {
     auto        0
     buffer      ""
@@ -55,7 +55,7 @@ array set jsqlsh_user_macros {}
 # Contains the option names and descriptions.
 # The word at the end is used in processing the options.
 # Users can only set/see options defined in this array.
-# Note: Command /S will display all settings.
+# Note: Command '/S; will display all settings.
 array set jsqlsh_user_opts {
     auto    "Automatically execute SQL ending with ';'. Bool"
     debug   "Controls debugging mode. (Very Verbose!) Bool"
@@ -117,9 +117,19 @@ ORDER BY m.name"
 
 # XXX Procedures {{{1
 
-# jsqlsh.check_file - Check if a file exists and is readable. {{{2
-# Returns a file name if a file is found.
-# Trys the file name with the defailt extension if $try_ext.
+# jsqlsh.check_file -- {{{2
+#   Check if a file exists and is readable.
+#
+# Arguments:
+#   config      The configuration array.
+#   file_name   The name of the file to check for.
+#   try_ext     Try the extension in config.
+#
+# Result:
+#   The name of the file if found.
+#
+# Side effect:
+#   None
 proc jsqlsh.check_file {config file_name {try_ext 0}} {
     if {[file exists $file_name] && [file readable $file_name]} {
         return $file_name
@@ -132,7 +142,17 @@ proc jsqlsh.check_file {config file_name {try_ext 0}} {
     return ""
 }
 
-# jsqlsh.cmd_opts - Process command line options. {{{2
+# jsqlsh.cmd_opts -- {{{2
+#   Process command line options.
+#
+# Arguments:
+#   config      The configuration array.
+#
+# Result:
+#   None
+#
+# Side effect:
+#   Modified config settings with the command line options.
 proc jsqlsh.cmd_opts {&config} {
     global argv
 
@@ -184,7 +204,19 @@ proc jsqlsh.cmd_opts {&config} {
     }
 }
 
-# jsqlsh.debug - Outputs debug information. {{{2
+# jsqlsh.debug -- {{{2
+#   Outputs debug information.
+#
+# Arguments:
+#   caller      The name of the calling procedure.
+#   output      Optional text to be displayed.
+#   args        Optional arguments to be displayed.
+#
+# Result:
+#   None
+#
+# Side effect:
+#   Prints a Debug message.
 proc jsqlsh.debug {caller {output ""} args} {
     set dtime [clock format [clock seconds] -format "%Y-%m-%d %I:%M %p"]
     puts "DEBUG: ($caller) $dtime"
@@ -202,7 +234,18 @@ proc jsqlsh.debug {caller {output ""} args} {
     }
 }
 
-# jsqlsh.display - Display output from the database. {{{2
+# jsqlsh.display -- {{{2
+#   Display output from the database.
+#
+# Arguments:
+#   config      The configuration array.
+#   output      The output from the query to display.
+#
+# Result:
+#   The number of rows from the query.
+#
+# Side effect:
+#   Prints the result.
 proc jsqlsh.display {&config output} {
     if {$output eq ""} { return 0 }
 
@@ -234,7 +277,20 @@ proc jsqlsh.display {&config output} {
     return $rows
 }
 
-# jsqlsh.display_csv - Display output as csv. {{{2
+# jsqlsh.display_csv -- {{{2
+#   Display output as csv.
+#
+# Arguments:
+#   config      The configuration array.
+#   output      The output from the query to display.
+#   headers     The headers from the query.
+#   channel     The channel to send the output to.
+#
+# Result:
+#   None
+#
+# Side effect:
+#   The output is printed in CSV format.
 proc jsqlsh.display_csv {config output headers channel} {
     proc list_to_csv {config row} {
         join [
@@ -258,7 +314,20 @@ proc jsqlsh.display_csv {config output headers channel} {
     }
 }
 
-# jsqlsh.display_list - Display output as a list. {{{2
+# jsqlsh.display_list -- {{{2
+#   Display output as a list.
+#
+# Arguments:
+#   config      The configuration array.
+#   output      The output from the query to display.
+#   headers     The headers from the query.
+#   channel     The channel to send the output to.
+#
+# Result:
+#   None
+#
+# Side effect:
+#   The output is printed in List format.
 proc jsqlsh.display_list {config output headers channel} {
     if {$config(header)} {
         puts $channel [join $headers $config(sep)]
@@ -269,7 +338,20 @@ proc jsqlsh.display_list {config output headers channel} {
     }
 }
 
-# jsqlsh.display_table - Display output as a table. {{{2
+# jsqlsh.display_table -- {{{2
+#   Display output as a table.
+#
+# Arguments:
+#   config      The configuration array.
+#   output      The output from the query to display.
+#   headers     The headers from the query.
+#   channel     The channel to send the output to.
+#
+# Result:
+#   None
+#
+# Side effect:
+#   The output is printed in Table format.
 proc jsqlsh.display_table {config output headers channel} {
     proc print_row {data {sep " |"}} {
         upvar channel channel
@@ -335,7 +417,20 @@ proc jsqlsh.display_table {config output headers channel} {
     }
 }
 
-# jsqlsh.display_tcl - Display output as a TCL list. {{{2
+# jsqlsh.display_tcl -- {{{2
+#   Display output as a TCL list.
+#
+# Arguments:
+#   config      The configuration array.
+#   output      The output from the query to display.
+#   headers     The headers from the query.
+#   channel     The channel to send the output to.
+#
+# Result:
+#   None
+#
+# Side effect:
+#   The output is printed in Tcl format.
 proc jsqlsh.display_tcl {config output headers channel} {
     if {$config(header)} {
         puts $channel [list $headers]
@@ -346,7 +441,18 @@ proc jsqlsh.display_tcl {config output headers channel} {
     }
 }
 
-# jsqlsh.dump_settings - Return the settings as a big string. {{{2
+# jsqlsh.dump_settings -- {{{2
+#   Return the settings as a big string.
+#
+# Arguments:
+#   config      The configuration array.
+#   all         If all options or only user settable options are dumped.
+#
+# Result:
+#   None
+#
+# Side effect:
+#   Settings are printed.
 proc jsqlsh.dump_settings {config all} {
     global jsqlsh_user_opts
     if ($all) {
@@ -366,7 +472,20 @@ proc jsqlsh.dump_settings {config all} {
     }
 }
 
-# jsqlsh.exec_query - Execute a query returning the output. {{{2
+# jsqlsh.exec_query -- {{{2
+#   Execute a query returning the output.
+#
+# Arguments:
+#   config      The configuration array.
+#   db          The database connection.
+#   query       The query to execute.
+#   args        Optional arguments to pass to the query
+#
+# Result:
+#   The results of the query are returned.
+#
+# Side effect:
+#   None
 proc jsqlsh.exec_query {&config db query args} {
     if {[llength $args] == 0 || $args eq {{}} } {
         set query [jsqlsh.replace $query "%"]
@@ -382,7 +501,18 @@ proc jsqlsh.exec_query {&config db query args} {
     return $output
 }
 
-# jsqlsh.goodbye - Say goodbye and close the database. {{{2
+# jsqlsh.goodbye -- {{{2
+#   Say goodbye and close the database.
+#
+# Arguments:
+#   config      The configuration array.
+#   db          The database connection.
+#
+# Result:
+#   The program is exited.
+#
+# Side effect:
+#   The database connection is closed.
 proc jsqlsh.goodbye {&config db} {
     jsqlsh.put_info $config ""          \
                             "Goodbye!"
@@ -391,7 +521,20 @@ proc jsqlsh.goodbye {&config db} {
     exit
 }
 
-# jsqlsh.handle_cmd_describe - Describe an object or lists objects. {{{2
+# jsqlsh.handle_cmd_describe -- {{{2
+#   Describe an object or lists objects.
+#
+# Arguments:
+#   config      The configuration array.
+#   db          The database connection.
+#   input       The input from the user.
+#   option      The option separated from the input.
+#
+# Result:
+#   None
+#
+# Side effect:
+#   Prints the requested description.
 proc jsqlsh.handle_cmd_describe {&config db input option} {
     global jsqlsh_queries
     set query ""
@@ -425,7 +568,17 @@ proc jsqlsh.handle_cmd_describe {&config db input option} {
     }
 }
 
-# jsqlsh.handle_cmd_edit - Handle the user command '/edit'. {{{2
+# jsqlsh.handle_cmd_edit -- {{{2
+#   Handle the user command '/edit'.
+#
+# Arguments:
+#   config      The configuration array.
+#
+# Result:
+#   None
+#
+# Side effect:
+#   The query buffer is replaced with the user edit.
 proc jsqlsh.handle_cmd_edit {&config} {
     if {$config(editor) eq ""} {
         puts "No editor defined. Can not edit the SQL buffer."
@@ -467,7 +620,18 @@ proc jsqlsh.handle_cmd_edit {&config} {
                             ""
 }
 
-# jsqlsh.handle_cmd_go - Handle the user command '/go'. {{{2
+# jsqlsh.handle_cmd_go -- {{{2
+#   Handle the user command '/go'.
+#
+# Arguments:
+#   config      The configuration array.
+#   db          The database connection.
+#
+# Result:
+#   None
+#
+# Side effect:
+#   The contents of the query buffer are executed and displayed.
 proc jsqlsh.handle_cmd_go {&config db} {
     set output [jsqlsh.exec_query config $db $config(buffer)]
     set config(rows) [jsqlsh.display config $output]
@@ -480,7 +644,19 @@ proc jsqlsh.handle_cmd_go {&config db} {
     set config(prompt) $config(ps1)
 }
 
-# jsqlsh.handle_cmd_open - Handle the user command '/o'. {{{2
+# jsqlsh.handle_cmd_open -- {{{2
+#   Handle the user command '/o'.
+#
+# Arguments:
+#   config      The configuration array.
+#   db          The database connection.
+#   option      The database to open.
+#
+# Result:
+#   None
+#
+# Side effect:
+#   The requested database is opened.
 proc jsqlsh.handle_cmd_open {&config &db option} {
     # List files and directories if there are no files.
     if {$option eq ""} {
@@ -522,7 +698,18 @@ proc jsqlsh.handle_cmd_open {&config &db option} {
     }
 }
 
-# jsqlsh.handle_cmd_set - Handle the user command '/set'. {{{2
+# jsqlsh.handle_cmd_set -- {{{2
+#   Handle the user command '/set'.
+#
+# Arguments:
+#   config      The configuration array.
+#   option      The option setting from the user.
+#
+# Result:
+#   None
+#
+# Side effect:
+#   The specified option is set in config.
 proc jsqlsh.handle_cmd_set {&config option} {
     global jsqlsh_user_opts
 
@@ -588,7 +775,19 @@ proc jsqlsh.handle_cmd_set {&config option} {
     set config($option) $value
 }
 
-# jsqlsh.handle_cmd_user_macro - Handle user defined macros. {{{2
+# jsqlsh.handle_cmd_user_macro -- {{{2
+#   Handle user defined macros.
+#
+# Arguments:
+#   config      The configuration array.
+#   input       The input from the user.
+#   option      The option portion of the user input.
+#
+# Result:
+#   None
+#
+# Side effect:
+#   The user macro is defined or copied to the query buffer.
 proc jsqlsh.handle_cmd_user_macro {&config input option} {
     global jsqlsh_user_macros
 
@@ -637,8 +836,19 @@ proc jsqlsh.handle_cmd_user_macro {&config input option} {
     }
 }
 
-# jsqlsh.handle_input - Handle user input. {{{2
-# Returns 1 if the input should be added to the history.
+# jsqlsh.handle_input -- {{{2
+#   Handle user input.
+#
+# Arguments:
+#   config      The configuration array.
+#   db          The database connection.
+#   input       The input from the user.
+#
+# Result:
+#   Returns 1 if the input should be added to the history.
+#
+# Side effect:
+#   Alters config and the query buffer depending on the user input.
 proc jsqlsh.handle_input {&config &db input} {
     if {[string length $input] == 0} {
         return
@@ -670,7 +880,7 @@ proc jsqlsh.handle_input {&config &db input} {
             /S*     { puts [jsqlsh.dump_settings $config 1] }
             /u*     { jsqlsh.handle_cmd_user_macro config $input $option }
             default { puts "Unknown option. Type '/h' for help"; return }
-        
+
         }
         return 1
     }
@@ -689,7 +899,18 @@ proc jsqlsh.handle_input {&config &db input} {
     return
 }
 
-# jsqlsh.handle_toggle - Handle toggling a setting. {{{2
+# jsqlsh.handle_toggle -- {{{2
+#   Handle toggling a setting.
+#
+# Arguments:
+#   config      The configuration array.
+#   name        The name of the option to set.
+#
+# Result:
+#   None
+#
+# Side effect:
+#   Changes the option in config and prints the state.
 proc jsqlsh.handle_toggle {&config name} {
     set state [set config($name) [expr {!$config($name)}]]
     if {$name == "quiet"} {
@@ -697,10 +918,19 @@ proc jsqlsh.handle_toggle {&config name} {
     }
     jsqlsh.put_info $config [format "The setting '%s' is now %s." $name \
                                     [expr {$state ? "Enabled" : "Disabled"}]]
-    return $state
 }
 
-# jsqlsh.help - Print the help text. {{{2
+# jsqlsh.help -- {{{2
+#   Print the help text.
+#
+# Arguments:
+#   None
+#
+# Result:
+#   None
+#
+# Side effect:
+#   The help text is printed.
 proc jsqlsh.help {} {
     puts "Commands:"
     puts "  /A          Toggle the auto option state."
@@ -725,7 +955,17 @@ proc jsqlsh.help {} {
     puts "  /u(ser)# -  Copy the query buffer, or supplied text, into macro #."
 }
 
-# jsqlsh.history_close - Close the history file. {{{2
+# jsqlsh.history_close -- {{{2
+#   Close the history file.
+#
+# Arguments:
+#   config      The configuration array.
+#
+# Result:
+#   None
+#
+# Side effect:
+#   The history file connection is closed.
 proc jsqlsh.history_close {&config} {
     if {[array exists config(hist_chan)]} {
         close $config(hist_chan)
@@ -733,7 +973,17 @@ proc jsqlsh.history_close {&config} {
     }
 }
 
-# jsqlsh.history_load - Load the history file into readline. {{{2
+# jsqlsh.history_load -- {{{2
+#   Load the history file into readline.
+#
+# Arguments:
+#   config      The configuration array.
+#
+# Result:
+#   None
+#
+# Side effect:
+#   Loads the history from the history file into Readline.
 proc jsqlsh.history_load {&config} {
     if {[jsqlsh.check_file $config $config(hist_file)] eq ""} {
         return
@@ -748,7 +998,17 @@ proc jsqlsh.history_load {&config} {
     close $hist_chan
 }
 
-# jsqlsh.history_open_append - Open the history. {{{2
+# jsqlsh.history_open_append -- {{{2
+#   Open the history.
+#
+# Arguments:
+#   config      The configuration array.
+#
+# Result:
+#   None
+#
+# Side effect:
+#   The history file is opened in append mode.
 proc jsqlsh.history_open_append {&config} {
     set hist_chan [open $config(hist_file) "a"]
     if {$hist_chan eq ""} {
@@ -758,7 +1018,18 @@ proc jsqlsh.history_open_append {&config} {
     set config(hist_chan) $hist_chan
 }
 
-# jsqlsh.history_write - Write a line to the history file. {{{2
+# jsqlsh.history_write -- {{{2
+#   Write a line to the history file.
+#
+# Arguments:
+#   config      The configuration array.
+#   line        The line to write to the history file.
+#
+# Result:
+#   None
+#
+# Side effect:
+#   The history file is appended to.
 proc jsqlsh.history_write {config line} {
     readline.addhistory $line
     if {![array exists config(hist_chan)]} {
@@ -769,9 +1040,18 @@ proc jsqlsh.history_write {config line} {
     flush $hist_chan
 }
 
-# jsqlsh.init - Initialize configuration. {{{2
-# Initializes the configuration variable.
-# Processes command line options and the configuration file.
+# jsqlsh.init -- {{{2
+#   Initialize configuration.
+#
+# Arguments:
+#   config      The configuration array.
+#
+# Result:
+#   None
+#
+# Side effect:
+#   Initializes the configuration variable.
+#   Processes command line options and the configuration file.
 proc jsqlsh.init {&config} {
     global argv argv0
 
@@ -817,7 +1097,17 @@ proc jsqlsh.init {&config} {
     }
 }
 
-# jsqlsh.load_rc_file - Load the configuration file. {{{2
+# jsqlsh.load_rc_file -- {{{2
+#   Load the configuration file.
+#
+# Arguments:
+#   config      The configuration array.
+#
+# Result:
+#   None
+#
+# Side effect:
+#   Loads the user configuration file.
 proc jsqlsh.load_rc_file {&config} {
     #puts "Loading configuration from '$config(rc_file)'."
     set db ""
@@ -838,7 +1128,17 @@ proc jsqlsh.load_rc_file {&config} {
     close $rc_chan
 }
 
-# jsqlsh.opendb - Open the database. {{{2
+# jsqlsh.opendb -- {{{2
+#   Open the database.
+#
+# Arguments:
+#   config      The configuration array.
+#
+# Result:
+#   The database connection.
+#
+# Side effect:
+#   The database is opened.
 proc jsqlsh.opendb {&config} {
     jsqlsh.put_info $config "Opening the database '$config(db_name)'."
     set ret [catch {set db [sqlite3.open $config(db_name)]} error]
@@ -853,7 +1153,18 @@ proc jsqlsh.opendb {&config} {
     return $db
 }
 
-# jsqlsh.prompt - Prompt the user and return their input. {{{2
+# jsqlsh.prompt -- {{{2
+#   Prompt the user and return their input.
+#
+# Arguments:
+#   config      The configuration array.
+#   db          The database connection.
+#
+# Result:
+#   The users input.
+#
+# Side effect:
+#   PRompts the user for input.
 proc jsqlsh.prompt {&config db} {
     set prompt [
         format "%s (%d rows, %d changes) %s%s "         \
@@ -879,7 +1190,18 @@ proc jsqlsh.prompt {&config db} {
     return $output
 }
 
-# jsqlsh.put_info - Print informational text if config(quiet) is not set. {{{2
+# jsqlsh.put_info -- {{{2
+#   Print informational text if config(quiet) is not set.
+#
+# Arguments:
+#   config      The configuration array.
+#   args        The information to print.
+#
+# Result:
+#   None
+#
+# Side effect:
+#   The arguments are printed.
 proc jsqlsh.put_info {config args} {
     if {!$config(quiet)} {
         foreach arg $args {
@@ -888,7 +1210,17 @@ proc jsqlsh.put_info {config args} {
     }
 }
 
-# jsqlsh.shell - The main loop to handle user input. {{{2
+# jsqlsh.shell -- {{{2
+#   The main loop to handle user input.
+#
+# Arguments:
+#   config      The configuration array.
+#
+# Result:
+#   None
+#
+# Side effect:
+#   None
 proc jsqlsh.shell {&config} {
     # Open the database.
     set db [jsqlsh.welcome config]
@@ -914,8 +1246,20 @@ proc jsqlsh.shell {&config} {
     }
 }
 
-# jsqlsh.replace - Replace a character or string in the input string. {{{2
-# Special case: If no replace then replace search with search doubled.
+# jsqlsh.replacejsqlsh.replace -- {{{2
+#   Replace a character or string in the input string.
+#   Special case: If no replace then replace search with search doubled.
+#
+# Arguments:
+#   input       The string to perform the replacement on.
+#   search      The substring to replace.
+#   args        The optional replacement substring.
+#
+# Result:
+#   The modified string is returned.
+#
+# Side effect:
+#   None
 proc jsqlsh.replace {input search args} {
     set output ""
     set prev 0
@@ -936,7 +1280,17 @@ proc jsqlsh.replace {input search args} {
     return $output
 }
 
-# jsqlsh.term_info - Get the terminal information. {{{2
+# jsqlsh.term_info -- {{{2
+#   Get the terminal information.
+#
+# Arguments:
+#   config      The configuration array.
+#
+# Result:
+#   None
+#
+# Side effect:
+#   The terminal information is set in config.
 proc jsqlsh.term_info {&config} {
     if {[catch {set stty [exec "stty" "-a"]}]} {
         puts "Unable to determine terminal size!"
@@ -954,7 +1308,17 @@ proc jsqlsh.term_info {&config} {
     }
 }
 
-# jsqlsh.usage - Print the command line usage. {{{2
+# jsqlsh.usage -- {{{2
+#   Print the command line usage.
+#
+# Arguments:
+#   comment     An optional comment to display to the user.
+#
+# Result:
+#   None
+#
+# Side effect:
+#   The command line usage is printed and the program exists.
 proc jsqlsh.usage {{comment ""}} {
     global argv0
 
@@ -979,7 +1343,17 @@ proc jsqlsh.usage {{comment ""}} {
     exit 1
 }
 
-# jsqlsh.welcome - Print the welcome message and open the database. {{{2
+# jsqlsh.welcome -- {{{2
+#   Print the welcome message and open the database.
+#
+# Arguments:
+#   config      The configuration array.
+#
+# Result:
+#   The database connection.
+#
+# Side effect:
+#   A welcome message is printed.
 proc jsqlsh.welcome {&config} {
     jsqlsh.put_info $config "Welcome to the SQLite Shell in Jim TCL [info version]."
     set db [jsqlsh.opendb config]
@@ -987,7 +1361,6 @@ proc jsqlsh.welcome {&config} {
         jsqlsh.put_info $config "Queries ending in ';' are automatically executed. (Setting 'auto')"
     }
     jsqlsh.put_info $config "To execute a query type '/'. For help type '/h'." \
-                            ""
 
     return $db
 }
