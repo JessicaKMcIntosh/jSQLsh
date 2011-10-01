@@ -7,7 +7,19 @@ SYNOPSIS
 DESCRIPTION
     jSQLsh is an SQLite shell based on the PostgreSQL command line shell.
     Implemented using the Jim Tcl interpreter. It is intended to be a simple
-    light weight SQLite shell.
+    light weight SQLite shell. The ReadLine library in Jim Tcl is used to
+    provide line editing and history. History persists in the file
+    *~/.jsqlsh_history*/
+
+    jSQLsh is not compatible with the sqlite3 command line client. It does
+    not recognize any of the sqlite3 *.* commands. In fact by default jSQLsh
+    does not execute SQL, even with an ending *;*. You have to tell jSQLsh
+    when to execute the contents of the query buffer, or turn on auto mode.
+    I tried to make configuration easy via the /set command.
+
+    There are things about the SQLite command shell that annoy me. Since I
+    could not find any easily modified, decent, command line SQL clients, so
+    I wrote my own. This is also my first foray in TCL programming.
 
 OPTIONS
     -a          Enable execution of queries ending with ';'. (auto setting)
@@ -17,7 +29,7 @@ OPTIONS
                 yet.
 
     -d          Disable slash commands and enable auto execution. Makes
-                jSQlsh act like a dumb SQL evaluator.
+                jsqlsh act like a dumb SQL evaluator.
 
     -D          Debug mode. (Copious output!)
 
@@ -34,18 +46,19 @@ PROMPT
     The prompt displays several bits of useful information. A typical prompt
     resembles DB.db (0 rows, 0 changes) #. The database name, number of rows
     returned from the last query, the number of rows changed by the last
-    query and the prompt setting.
+    query and the prompt setting. When debugging is enabled the prompt will
+    also have DEBUG as a reminder.
 
 COMMANDS
     jSQLsh has several commands for interactive use. These are patterned
     after the psql commands. All commands start with a forward slash "/".
     The parts in parens "()" are optional.
 
-    /A          Toggle the auto option state.
+    /A(UTO)     Toggle the auto option state.
 
     /c(lear)    Clear the query buffer
 
-    /D          Toggle the debug option state.
+    /D(EBUG)    Toggle the debug option state.
 
     /d          Display all objects in the database.
 
@@ -66,15 +79,16 @@ COMMANDS
                 */o* alone lists files in the current directory. */o DIR*
                 changes to the directory *DIR*.
 
-    /P          Toggle the page option state. This uses the pager defined in
+    /P(AGER)    Toggle the page option state. This uses the pager defined in
                 *$PAGER* or *more*/
 
     /p(rint)    Print the query buffer.
 
-    /s(et)      Set/List configuration options. '/s OPTION VALUE' Values are
-                treated as TCL strings and can be quoted.
+    /s(et)      Set/List configuration options. The format to set options is
+                */s OPTION VALUE*. Values are treated as TCL strings and can
+                be quoted.
 
-    /Q          Toggle the quiet option state.
+    /Q(UIET)    Toggle the quiet option state.
 
     /q(uit)     Quit (Also Ctrl-D)
 
@@ -108,7 +122,7 @@ SETTINGS
 
     header      If table headers should be printed. Defaults to on. *Bool*
 
-    null        The value that represents SQL NULLs. Defaults to *NULL*.
+    null        The value that represents SQL NULL. Defaults to *NULL*.
                 *Text*
 
     page        Use the 'pager' program for long results. Defaults to on.
@@ -140,12 +154,15 @@ CONFIGURATION
 PORTABILITY
     jSQLsh should work with any recent version of Jim Tcl (7 and later
     should be good). Jim needs to be compiled with at least the modules
-    readline and sqlite3.
+    readline and sqlite3. Thus far testing has only been performed under
+    Cygwin and Debian Linux "Squeeze".
 
     <http://jim.berlios.de/>
 
 INSTALLATION
-    Either copy jsqlsh where you want it or run "make install".
+    Either copy jsqlsh where you want it or run *make install*. The makefile
+    will copy jsqlsh and the manual page to */usr/local/*. Edit the makefile
+    to choose a different location.
 
 HOME
     <https://github.com/LStinson/jSQLsh>
@@ -155,4 +172,6 @@ COPYRIGHT
 
 AUTHOR
     Written by Lorance Stinson AT Gmail....
+
+    I welcome any input.
 

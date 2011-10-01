@@ -138,7 +138,18 @@ jsqlsh [Options] [\-\-] <Database File>
 .IX Header "DESCRIPTION"
 jSQLsh is an SQLite shell based on the PostgreSQL command line shell.
 Implemented using the Jim Tcl interpreter. It is intended to be a simple light
-weight SQLite shell.
+weight SQLite shell. The ReadLine library in Jim Tcl is used to provide line
+editing and history. History persists in the file \fI~/.jsqlsh_history\fR/
+.PP
+jSQLsh is not compatible with the sqlite3 command line client. It does not
+recognize any of the sqlite3 \fI.\fR commands. In fact by default jSQLsh does not
+execute \s-1SQL\s0, even with an ending \fI;\fR. You have to tell jSQLsh when to execute
+the contents of the query buffer, or turn on \fBauto\fR mode. I tried to make
+configuration easy via the \fB/set\fR command.
+.PP
+There are things about the SQLite command shell that annoy me. Since I could
+not find any easily modified, decent, command line \s-1SQL\s0 clients, so I wrote my
+own. This is also my first foray in \s-1TCL\s0 programming.
 .SH "OPTIONS"
 .IX Header "OPTIONS"
 .IP "\fB\-a\fR" 12
@@ -150,7 +161,7 @@ Create the database file. Fails if the file exists. Normally jSQLsh will not
 open a database file that does not exist yet.
 .IP "\fB\-d\fR" 12
 .IX Item "-d"
-Disable slash commands and enable auto execution. Makes jSQlsh act like a dumb
+Disable slash commands and enable auto execution. Makes jsqlsh act like a dumb
 \&\s-1SQL\s0 evaluator.
 .IP "\fB\-D\fR" 12
 .IX Item "-D"
@@ -173,20 +184,21 @@ file to open.
 The prompt displays several bits of useful information. A typical prompt
 resembles \fB\s-1DB\s0.db (0 rows, 0 changes) #\fR. The database name, number of rows
 returned from the last query, the number of rows changed by the last query and
-the prompt setting.
+the prompt setting. When debugging is enabled the prompt will also have
+\&\fB\s-1DEBUG\s0\fR as a reminder.
 .SH "COMMANDS"
 .IX Header "COMMANDS"
 jSQLsh has several commands for interactive use. These are patterned after the
 psql commands. All commands start with a forward slash \*(L"/\*(R". The parts in
 parens \*(L"()\*(R" are optional.
-.IP "\fB/A\fR" 12
-.IX Item "/A"
+.IP "\fB/A(\s-1UTO\s0)\fR" 12
+.IX Item "/A(UTO)"
 Toggle the auto option state.
 .IP "\fB/c(lear)\fR" 12
 .IX Item "/c(lear)"
 Clear the query buffer
-.IP "\fB/D\fR" 12
-.IX Item "/D"
+.IP "\fB/D(\s-1EBUG\s0)\fR" 12
+.IX Item "/D(EBUG)"
 Toggle the debug option state.
 .IP "\fB/d\fR" 12
 .IX Item "/d"
@@ -213,8 +225,8 @@ Print this help text.
 .IX Item "/o(pen)"
 Open a database file, change directories and list files. \fI/o\fR alone lists
 files in the current directory. \fI/o \s-1DIR\s0\fR changes to the directory \fI\s-1DIR\s0\fR.
-.IP "\fB/P\fR" 12
-.IX Item "/P"
+.IP "\fB/P(\s-1AGER\s0)\fR" 12
+.IX Item "/P(AGER)"
 Toggle the page option state. This uses the pager defined in \fI\f(CI$PAGER\fI\fR or
 \&\fImore\fR/
 .IP "\fB/p(rint)\fR" 12
@@ -222,10 +234,10 @@ Toggle the page option state. This uses the pager defined in \fI\f(CI$PAGER\fI\f
 Print the query buffer.
 .IP "\fB/s(et)\fR" 12
 .IX Item "/s(et)"
-Set/List configuration options. '/s \s-1OPTION\s0 \s-1VALUE\s0' Values are treated as \s-1TCL\s0
-strings and can be quoted.
-.IP "\fB/Q\fR" 12
-.IX Item "/Q"
+Set/List configuration options. The format to set options is \fI/s \s-1OPTION\s0
+\&\s-1VALUE\s0\fR. Values are treated as \s-1TCL\s0 strings and can be quoted.
+.IP "\fB/Q(\s-1UIET\s0)\fR" 12
+.IX Item "/Q(UIET)"
 Toggle the quiet option state.
 .IP "\fB/q(uit)\fR" 12
 .IX Item "/q(uit)"
@@ -268,7 +280,7 @@ The escape character for \s-1CSV\s0 mode. Defaults to \fI\e\e\fR. \fIText\fR
 If table headers should be printed. Defaults to on. \fIBool\fR
 .IP "\fBnull\fR" 12
 .IX Item "null"
-The value that represents \s-1SQL\s0 NULLs. Defaults to \fI\s-1NULL\s0\fR. \fIText\fR
+The value that represents \s-1SQL\s0 \s-1NULL\s0. Defaults to \fI\s-1NULL\s0\fR. \fIText\fR
 .IP "\fBpage\fR" 12
 .IX Item "page"
 Use the 'pager' program for long results. Defaults to on. \fIBool\fR
@@ -280,7 +292,7 @@ The pager program for long results. Defaults to either \fI\f(CI$PAGER\fI\fR or \
 Main prompt. Defaults to  \fI#\fR. \fIText\fR
 .IP "\fBps2\fR" 12
 .IX Item "ps2"
-More prompt.  Defaults to \fI?\fR. \fIText\fR
+More prompt. Defaults to \fI?\fR. \fIText\fR
 .IP "\fBquiet\fR" 12
 .IX Item "quiet"
 Disables informational messages. Defaults to off. \fIBool\fR
@@ -303,12 +315,15 @@ not work.
 .IX Header "PORTABILITY"
 jSQLsh should work with any recent version of Jim Tcl (7 and later should be
 good). Jim needs to be compiled with at least the modules \fBreadline\fR and
-\&\fBsqlite3\fR.
+\&\fBsqlite3\fR. Thus far testing has only been performed under Cygwin and Debian
+Linux \*(L"Squeeze\*(R".
 .PP
 <http://jim.berlios.de/>
 .SH "INSTALLATION"
 .IX Header "INSTALLATION"
-Either copy \fIjsqlsh\fR where you want it or run \*(L"make install\*(R".
+Either copy \fIjsqlsh\fR where you want it or run \fImake install\fR. The makefile
+will copy jsqlsh and the manual page to \fI/usr/local/\fR. Edit the makefile to
+choose a different location.
 .SH "HOME"
 .IX Header "HOME"
 <https://github.com/LStinson/jSQLsh>
@@ -318,3 +333,5 @@ These files are in the public domain.
 .SH "AUTHOR"
 .IX Header "AUTHOR"
 Written by Lorance Stinson \s-1AT\s0 Gmail....
+.PP
+I welcome any input.

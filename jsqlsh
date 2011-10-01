@@ -184,6 +184,7 @@ proc cmd_opts {&config} {
         }
     }
 }
+
 proc cmd_opts_try_file {&config create_db arg} {
     set file_name [check_file $config $arg 1]
     if {$create_db} {
@@ -202,36 +203,6 @@ proc cmd_opts_try_file {&config create_db arg} {
 
 proc cmd_opts_load_setting {&config setting} {
     handle_cmd_set config [regsub "=" $setting " "]
-}
-
-# debug -- {{{2
-#   Outputs debug information.
-#
-# Arguments:
-#   caller      The name of the calling procedure.
-#   output      Optional text to be displayed.
-#   args        Optional arguments to be displayed.
-#
-# Result:
-#   None
-#
-# Side effect:
-#   Prints a Debug message.
-proc debug {caller {output ""} args} {
-    set dtime [clock format [clock seconds] -format "%Y-%m-%d %I:%M %p"]
-    puts "DEBUG: ($caller) $dtime"
-
-    if {$output ne ""} {
-        foreach line [split $output "\n\r"] {
-            puts "DEBUG: $line"
-        }
-    }
-
-    if {[llength $args]} {
-        foreach line $args {
-            puts "ARGS: $line"
-        }
-    }
 }
 
 # display -- {{{2
@@ -277,6 +248,36 @@ proc display {&config output} {
     return $rows
 }
 
+# display_debug -- {{{2
+#   Displays debug information.
+#
+# Arguments:
+#   caller      The name of the calling procedure.
+#   output      Optional text to be displayed.
+#   args        Optional arguments to be displayed.
+#
+# Result:
+#   None
+#
+# Side effect:
+#   Prints a Debug message.
+proc display_debug {caller {output ""} args} {
+    set dtime [clock format [clock seconds] -format "%Y-%m-%d %I:%M %p"]
+    puts "DEBUG: ($caller) $dtime"
+
+    if {$output ne ""} {
+        foreach line [split $output "\n\r"] {
+            puts "DEBUG: $line"
+        }
+    }
+
+    if {[llength $args]} {
+        foreach line $args {
+            puts "ARGS: $line"
+        }
+    }
+}
+
 # display_csv -- {{{2
 #   Display output as csv.
 #
@@ -311,6 +312,41 @@ proc display_csv_list_to_csv {config row} {
             }
         }
     ] $config(sep)
+}
+
+# display_help -- {{{2
+#   Display the help text.
+#
+# Arguments:
+#   None
+#
+# Result:
+#   None
+#
+# Side effect:
+#   The help text is printed.
+proc display_help {} {
+    puts "Commands:"
+    puts "  /A(UTO)     Toggle the auto option state."
+    puts "  /c(lear)    Clear the query buffer"
+    puts "  /D(EBUG)    Toggle the debug option state."
+    puts "  /d          Display all objects in the database."
+    puts "  /d\[itv\]     Display all indexes (/di) / tables (/dt) / views (/dv)."
+    puts "  /d OBJ      Describe the object OBJ."
+    puts "  /ds OBJ     Displays the schema for the object OBJ."
+    puts "  /e(dit)     Edit the query buffer."
+    puts "  /go | /     Execute the query in the query buffer."
+    puts "  /h(elp)     Print this help text."
+    puts "  /o(pen)     Open a database file, change directories and list files."
+    puts "  /P(AGER)    Toggle the page option state."
+    puts "  /p(rint)    Print the query buffer."
+    puts "  /s(et)      Set/List configuration options. '/s OPTION VALUE'"
+    puts "              Values are treated as TCL strings and can be quoted."
+    puts "  /Q(uiet)    Toggle the quiet option state."
+    puts "  /q(uit)     Quit  (Also Ctrl-D)"
+    puts "  /u(ser)     Display the user macros."
+    puts "  /u(ser)#    Copy user macro # into the query buffer."
+    puts "  /u(ser)# -  Copy the query buffer, or supplied text, into macro #."
 }
 
 # display_list -- {{{2
@@ -490,7 +526,7 @@ proc exec_query {&config db query args} {
         set query [replace $query "%"]
     }
     if {$config(debug)} {
-        debug "exec_query" $query $args
+        display_debug "exec_query" $query $args
     }
     set ret [catch {$db query -null $config(null) $query $args} output]
     if {$ret} {
@@ -769,7 +805,7 @@ proc handle_cmd_set {&config option} {
     }
 
     if {$config(debug)} {
-        debug "handle_cmd_set" "Setting ($option) to '$value'"
+        display_debug "handle_cmd_set" "Setting ($option) to '$value'"
     }
     set config($option) $value
 }
@@ -810,7 +846,7 @@ proc handle_cmd_user_macro {&config input option} {
                              ""
         } else {
             # Calling a macro.
-            if {![exists jsqlsh_user_macros($macro)]} {
+            if {![array exists jsqlsh_user_macros($macro)]} {
                 puts "Undefined user macro '$macro'."
                 puts "Please define with '/user$macro -' to copy the query buffer"
                 puts "or '/user$macro SQL' to set to specific SQL."
@@ -858,20 +894,20 @@ proc handle_input {&config &db input} {
         set option ""
         if {[set index [string first " " $input]] > 0} {
             set option [string trim [string range $input $index end]]
-            set input [string trim [string range $input 0 $index]]
+            set input  [string trim [string range $input 0 $index]]
         }
         switch -glob -- $input {
-            /A      { handle_toggle config "auto" }
+            /A*     { handle_toggle config "auto" }
             /c*     { set config(buffer) ""; set config(prompt) $config(ps1) }
-            /D      { handle_toggle config "debug" }
+            /D*     { handle_toggle config "debug" }
             /d*     { handle_cmd_describe config $db $input $option }
             /e*     { handle_cmd_edit config }
             /       -
             /go     { handle_cmd_go config $db; return }
             /\\?    -
-            /h*     { help }
+            /h*     { display_help }
             /o*     { handle_cmd_open config db $option }
-            /P      { handle_toggle config "page" }
+            /P*     { handle_toggle config "page" }
             /p*     { if {$config(buffer) ne ""} { puts $config(buffer) } }
             /Q*     { handle_toggle config "quiet" }
             /q*     { goodbye config $db }
@@ -917,41 +953,6 @@ proc handle_toggle {&config name} {
     }
     put_info $config [format "The setting '%s' is now %s." $name \
                              [expr {$state ? "Enabled" : "Disabled"}]]
-}
-
-# help -- {{{2
-#   Print the help text.
-#
-# Arguments:
-#   None
-#
-# Result:
-#   None
-#
-# Side effect:
-#   The help text is printed.
-proc help {} {
-    puts "Commands:"
-    puts "  /A          Toggle the auto option state."
-    puts "  /c(lear)    Clear the query buffer"
-    puts "  /D          Toggle the debug option state."
-    puts "  /d          Display all objects in the database."
-    puts "  /d\[itv\]     Display all indexes (/di) / tables (/dt) / views (/dv)."
-    puts "  /d OBJ      Describe the object OBJ."
-    puts "  /ds OBJ     Displays the schema for the object OBJ."
-    puts "  /e(dit)     Edit the query buffer."
-    puts "  /go | /     Execute the query in the query buffer."
-    puts "  /h(elp)     Print this help text."
-    puts "  /o(pen)     Open a database file, change directories and list files."
-    puts "  /P          Toggle the page option state."
-    puts "  /p(rint)    Print the query buffer."
-    puts "  /s(et)      Set/List configuration options. '/s OPTION VALUE'"
-    puts "              Values are treated as TCL strings and can be quoted."
-    puts "  /Q          Toggle the quiet option state."
-    puts "  /q(uit)     Quit  (Also Ctrl-D)"
-    puts "  /u(ser)     Display the user macros."
-    puts "  /u(ser)#    Copy user macro # into the query buffer."
-    puts "  /u(ser)# -  Copy the query buffer, or supplied text, into macro #."
 }
 
 # history_close -- {{{2
@@ -1076,7 +1077,8 @@ proc init {&config} {
 
     # Show all settings on Debug mode.
     if {$config(debug)} {
-        debug "Configuration" [dump_settings $config 1]
+        display_debug "Configuration"
+        dump_settings $config 1
     }
 
     # Quiet is in effect during initialization.
@@ -1152,7 +1154,7 @@ proc opendb {&config} {
     return $db
 }
 
-# prompt -- {{{2
+# prompt_user -- {{{2
 #   Prompt the user and return their input.
 #
 # Arguments:
@@ -1164,7 +1166,7 @@ proc opendb {&config} {
 #
 # Side effect:
 #   PRompts the user for input.
-proc prompt {&config db} {
+proc prompt_user {&config db} {
     set prompt [
         format "%s (%d rows, %d changes) %s%s "         \
                 $config(db_name)                        \
@@ -1228,7 +1230,7 @@ proc shell {&config} {
     set prev_input ""
     while 1 {
         # Prompt for user input.
-        set input [prompt config $db]
+        set input [prompt_user config $db]
 
         # Handle their input.
         if {[handle_input config db $input] ne ""} {
@@ -1245,7 +1247,7 @@ proc shell {&config} {
     }
 }
 
-# replacereplace -- {{{2
+# replace -- {{{2
 #   Replace a character or string in the input string.
 #   Special case: If no replace then replace search with search doubled.
 #
