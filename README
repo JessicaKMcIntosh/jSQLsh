@@ -1,15 +1,158 @@
-jSQLsh - SQLite Shell written for Jim TCL (http://jim.berlios.de/)
-Lorance Stinson - Lorance Stinson AT gmail DOT com
+NAME
+    jSQLsh - Jim Tcl SQLite Shell
 
-There are things about the SQLite command shell that annoy me.
-Since there are no easily modified command line SQL clients, so I wrote my
-own. This is also my first foray in TCL programming.
+SYNOPSIS
+    jsqlsh [Options] [--] <Database File>
 
-Requires Jim TCL compiled with at least the following configuration options:
-    ./configure --with-ext="readline sqlite3"
+DESCRIPTION
+    jSQLsh is an SQLite shell based on the PostgreSQL command line shell.
+    Implemented using the Jim Tcl interpreter. It is intended to be a simple
+    light weight SQLite shell.
 
-Online help is available with the '/h' command.
+OPTIONS
+    -a          Enable execution of queries ending with ';'. (auto setting)
 
-The file '~/.jsqlshrc' is loaded on startup.
-Place custom settings here, like user macros.
-This file can only contain comments '#' and '/' commands.
+    -c          Create the database file. Fails if the file exists. Normally
+                jSQLsh will not open a database file that does not exist
+                yet.
+
+    -d          Disable slash commands and enable auto execution. Makes
+                jSQlsh act like a dumb SQL evaluator.
+
+    -D          Debug mode. (Copious output!)
+
+    -h          Display the help text.
+
+    -q          Set quiet mode.
+
+    -s'opt=val' Set an option as in the '/s' command.
+
+    --          Stops processing command line options. The next option is
+                used as the database file to open.
+
+PROMPT
+    The prompt displays several bits of useful information. A typical prompt
+    resembles DB.db (0 rows, 0 changes) #. The database name, number of rows
+    returned from the last query, the number of rows changed by the last
+    query and the prompt setting.
+
+COMMANDS
+    jSQLsh has several commands for interactive use. These are patterned
+    after the psql commands. All commands start with a forward slash "/".
+    The parts in parens "()" are optional.
+
+    /A          Toggle the auto option state.
+
+    /c(lear)    Clear the query buffer
+
+    /D          Toggle the debug option state.
+
+    /d          Display all objects in the database.
+
+    /d\[itv\]   Display all indexes (/di) / tables (/dt) / views (/dv).
+
+    /d OBJ      Describe the object OBJ.
+
+    /ds OBJ     Displays the schema for the object OBJ.
+
+    /e(dit)     Edit the query buffer. This uses the editor defined in
+                *$EDITOR* or *vi*.
+
+    /go or /    Execute the query in the query buffer..
+
+    /h(elp)     Print this help text.
+
+    /o(pen)     Open a database file, change directories and list files.
+                */o* alone lists files in the current directory. */o DIR*
+                changes to the directory *DIR*.
+
+    /P          Toggle the page option state. This uses the pager defined in
+                *$PAGER* or *more*/
+
+    /p(rint)    Print the query buffer.
+
+    /s(et)      Set/List configuration options. '/s OPTION VALUE' Values are
+                treated as TCL strings and can be quoted.
+
+    /Q          Toggle the quiet option state.
+
+    /q(uit)     Quit (Also Ctrl-D)
+
+    /u(ser)     Display the user macros.
+
+    /u(ser)#    Copy user macro # into the query buffer. Replacing the
+                current query buffer contents.
+
+    /u(ser)# -  Copy the query buffer, or supplied text, into macro #.
+
+SETTINGS
+    Settings are changed with the /s command as noted above. Each setting is
+    either a text or boolean value.
+
+    The values *1*, *true*, *yes* &, *on* count as true boolean values.
+    Anything is considered false. Boolean settings are indicated by the text
+    *Bool* after their description.
+
+    auto        Automatically execute SQL ending with ';'. Defaults to off.
+                *Bool*
+
+    debug       Controls debugging mode. (Very Verbose!) Defaults to off.
+                *Bool*
+
+    editor      The editor program for editing queries. Defaults to either
+                *$EDITOR* or *vi*. *Text*
+
+    ext         SQLite file extension. Defaults to *.db*. *Text*
+
+    escape      The escape character for CSV mode. Defaults to *\\*. *Text*
+
+    header      If table headers should be printed. Defaults to on. *Bool*
+
+    null        The value that represents SQL NULLs. Defaults to *NULL*.
+                *Text*
+
+    page        Use the 'pager' program for long results. Defaults to on.
+                *Bool*
+
+    pager       The pager program for long results. Defaults to either
+                *$PAGER* or *more*. *Text*
+
+    ps1         Main prompt. Defaults to *#*. *Text*
+
+    ps2         More prompt. Defaults to *?*. *Text*
+
+    quiet       Disables informational messages. Defaults to off. *Bool*
+
+    quote       The quote character for CSV mode. Defaults to *"*. *Text*
+
+    sep         Field separator for CSV & List modes. Defaults to *,*.
+                *Text*
+
+    trunc       Truncate long rows to fit the screen. Defaults to off.
+                *Bool*
+
+CONFIGURATION
+    During startup, before command line options are processed, the
+    configuration file ~/.jsqlshrc is read. This file can contain any
+    commands as noted above. Comments denoted by # and whitespace are
+    ignored. SQL queries will not work.
+
+PORTABILITY
+    jSQLsh should work with any recent version of Jim Tcl (7 and later
+    should be good). Jim needs to be compiled with at least the modules
+    readline and sqlite3.
+
+    <http://jim.berlios.de/>
+
+INSTALLATION
+    Either copy jsqlsh where you want it or run "make install".
+
+HOME
+    <https://github.com/LStinson/jSQLsh>
+
+COPYRIGHT
+    These files are in the public domain.
+
+AUTHOR
+    Written by Lorance Stinson AT Gmail....
+

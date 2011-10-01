@@ -1,0 +1,258 @@
+=head1 NAME
+
+jSQLsh - Jim Tcl SQLite Shell
+
+=head1 SYNOPSIS
+
+jsqlsh [Options] [--] <Database File>
+
+=head1 DESCRIPTION
+
+jSQLsh is an SQLite shell based on the PostgreSQL command line shell.
+Implemented using the Jim Tcl interpreter. It is intended to be a simple light
+weight SQLite shell.
+
+=head1 OPTIONS
+
+=over 12
+
+=item B<-a>
+
+Enable execution of queries ending with ';'. (auto setting)
+
+=item B<-c>
+
+Create the database file. Fails if the file exists. Normally jSQLsh will not
+open a database file that does not exist yet.
+
+=item B<-d>
+
+Disable slash commands and enable auto execution. Makes jSQlsh act like a dumb
+SQL evaluator.
+
+=item B<-D>
+
+Debug mode. (Copious output!)
+
+=item B<-h>
+
+Display the help text.
+
+=item B<-q>
+
+Set quiet mode.
+
+=item B<-s'opt=val'>
+
+Set an option as in the '/s' command.
+
+=item B<-->
+
+Stops processing command line options. The next option is used as the database
+file to open.
+
+=back
+
+
+=head1 PROMPT
+
+The prompt displays several bits of useful information. A typical prompt
+resembles B<DB.db (0 rows, 0 changes) #>. The database name, number of rows
+returned from the last query, the number of rows changed by the last query and
+the prompt setting.
+
+=head1 COMMANDS
+
+jSQLsh has several commands for interactive use. These are patterned after the
+psql commands. All commands start with a forward slash "/". The parts in
+parens "()" are optional.
+
+=over 12
+
+=item B</A>
+
+Toggle the auto option state.
+
+=item B</c(lear)>
+
+Clear the query buffer
+
+=item B</D>
+
+Toggle the debug option state.
+
+=item B</d>
+
+Display all objects in the database.
+
+=item B</d\[itv\]>
+
+Display all indexes (/di) / tables (/dt) / views (/dv).
+
+=item B</d OBJ>
+
+Describe the object OBJ.
+
+=item B</ds OBJ>
+
+Displays the schema for the object OBJ.
+
+=item B</e(dit)>
+
+Edit the query buffer. This uses the editor defined in I<$EDITOR> or I<vi>.
+
+=item B</go> or B</>
+
+Execute the query in the query buffer..
+
+=item B</h(elp)>
+
+Print this help text.
+
+=item B</o(pen)>
+
+Open a database file, change directories and list files. I</o> alone lists
+files in the current directory. I</o DIR> changes to the directory I<DIR>.
+
+=item B</P>
+
+Toggle the page option state. This uses the pager defined in I<$PAGER> or
+I<more>/
+
+=item B</p(rint)>
+
+Print the query buffer.
+
+=item B</s(et)>
+
+Set/List configuration options. '/s OPTION VALUE' Values are treated as TCL
+strings and can be quoted.
+
+=item B</Q>
+
+Toggle the quiet option state.
+
+=item B</q(uit)>
+
+Quit  (Also Ctrl-D)
+
+=item B</u(ser)>
+
+Display the user macros.
+
+=item B</u(ser)#>
+
+Copy user macro # into the query buffer. Replacing the current query buffer
+contents.
+
+=item B</u(ser)# ->
+
+Copy the query buffer, or supplied text, into macro #.
+
+=back
+
+=head1 SETTINGS
+
+Settings are changed with the B</s> command as noted above. Each setting is
+either a text or boolean value.
+
+The values I<1>, I<true>, I<yes> &, I<on> count as true boolean values.
+Anything is considered false. Boolean settings are indicated by the text
+I<Bool> after their description.
+
+=over 12
+
+=item B<auto>
+
+Automatically execute SQL ending with ';'. Defaults to off. I<Bool>
+
+=item B<debug>
+
+Controls debugging mode. (Very Verbose!) Defaults to off. I<Bool>
+
+=item B<editor>
+
+The editor program for editing queries. Defaults to either I<$EDITOR> or I<vi>. I<Text>
+
+=item B<ext>
+
+SQLite file extension. Defaults to I<.db>. I<Text>
+
+=item B<escape>
+
+The escape character for CSV mode. Defaults to I<\\>. I<Text>
+
+=item B<header>
+
+If table headers should be printed. Defaults to on. I<Bool>
+
+=item B<null>
+
+The value that represents SQL NULLs. Defaults to I<NULL>. I<Text>
+
+=item B<page>
+
+Use the 'pager' program for long results. Defaults to on. I<Bool>
+
+=item B<pager>
+
+The pager program for long results. Defaults to either I<$PAGER> or I<more>. I<Text>
+
+=item B<ps1>
+
+Main prompt. Defaults to  I<#>. I<Text>
+
+=item B<ps2>
+
+More prompt.  Defaults to I<?>. I<Text>
+
+=item B<quiet>
+
+Disables informational messages. Defaults to off. I<Bool>
+
+=item B<quote>
+
+The quote character for CSV mode. Defaults to I<">. I<Text>
+
+=item B<sep>
+
+Field separator for CSV & List modes. Defaults to I<,>. I<Text>
+
+=item B<trunc>
+
+Truncate long rows to fit the screen. Defaults to off. I<Bool>
+
+=back
+
+=head1 CONFIGURATION
+
+During startup, before command line options are processed, the configuration
+file B<~/.jsqlshrc> is read. This file can contain any commands as noted
+above. Comments denoted by B<#> and whitespace are ignored. SQL queries will
+not work.
+
+=head1 PORTABILITY
+
+jSQLsh should work with any recent version of Jim Tcl (7 and later should be
+good). Jim needs to be compiled with at least the modules B<readline> and
+B<sqlite3>.
+
+L<http://jim.berlios.de/>
+
+=head1 INSTALLATION
+
+Either copy F<jsqlsh> where you want it or run "make install".
+
+=head1 HOME
+
+L<https://github.com/LStinson/jSQLsh>
+
+=head1 COPYRIGHT
+
+These files are in the public domain.
+
+=head1 AUTHOR
+
+Written by Lorance Stinson AT Gmail....
+
+=cut
