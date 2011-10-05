@@ -44,8 +44,8 @@ array set jsqlsh_config {
     quote       "\""
     rows        0
     sep         ","
-    term_height 0
-    term_width  0
+    term_height 24
+    term_width  80
     trunc       0
 }
 
@@ -1293,19 +1293,25 @@ proc replace {input search args} {
 # Side effect:
 #   The terminal information is set in config.
 proc term_info {&config} {
-    if {[catch {set stty [exec "stty" "-a"]}]} {
-        puts "Unable to determine terminal size!"
-        return
-    }
-    foreach item [split $stty ";"] {
-        set temp [split [string trim $item] " "]
-        if {[lindex $temp 0] eq "rows"} {
-            set config(term_height) [lindex $temp 1]
+    try {
+        set stty [exec "stty" "-a"]
+        foreach item [split $stty ";"] {
+            lassign $item name value
+            if {$name eq "rows"} {
+                set config(term_height) $value
+            }
+            if {$name eq "columns"} {
+                set config(term_width) $value
+            }
         }
-        if {[lindex $temp 0] eq "columns"} {
-            set config(term_width) [lindex $temp 1]
-            break
+    } on error msg {
+        puts "Warning: Unable to determine terminal size!"
+        puts "Using default of 80x24"
+        puts "Error Message:"
+        foreach line [split $msg "\n\r"] {
+            puts "    $line"
         }
+        puts ""
     }
 }
 
