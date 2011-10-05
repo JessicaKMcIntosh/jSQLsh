@@ -160,9 +160,9 @@ proc cmd_opts {&config} {
     set create_db 0
     set arg_mode ""
     foreach arg $argv {
-        if {$arg_mode == "D"} {
+        if {$arg_mode eq "D"} {
             return [cmd_opts_try_file config $create_db $arg]
-        } elseif {$arg_mode == "S"} {
+        } elseif {$arg_mode eq "S"} {
             cmd_opts_load_setting config $arg
             set arg_mode ""
             continue
@@ -948,7 +948,7 @@ proc handle_input {&config &db input} {
 #   Changes the option in config and prints the state.
 proc handle_toggle {&config name} {
     set state [set config($name) [expr {!$config($name)}]]
-    if {$name == "quiet"} {
+    if {$name eq "quiet"} {
         set config(quiet_temp) $state
     }
     put_info $config [format "The setting '%s' is now %s." $name \
@@ -1176,19 +1176,19 @@ proc prompt_user {&config db} {
                 $config(prompt)
     ]
 
-    set ret [catch -exit {readline.readline $prompt} output]
-
-    if {$ret == 6} {
+    try -exit {
+        set input [readline.readline $prompt]
+    } on exit {} {
         # User pressed Ctrl-D.
         puts ""
         goodbye config $db
-    } elseif {$ret != 0} {
+    } on error msg {
         puts ""
-        puts "Readline Error ($ret): $output"
+        puts "Readline Error: $msg"
         exit 1
     }
 
-    return $output
+    return $input
 }
 
 # put_info -- {{{2
@@ -1205,9 +1205,7 @@ proc prompt_user {&config db} {
 #   The arguments are printed.
 proc put_info {config args} {
     if {!$config(quiet)} {
-        foreach arg $args {
-            puts $arg
-        }
+        puts [join $args "\n"]
     }
 }
 
