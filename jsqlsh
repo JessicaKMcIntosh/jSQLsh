@@ -391,7 +391,7 @@ proc display_table {config output headers channel} {
     # Set the column widths.
     array set col_width {}
     foreach col $headers {
-        array set col_width($col) [string length $col]
+        set col_width($col) [string length $col]
     }
     foreach row $output {
         foreach col $headers {
