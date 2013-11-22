@@ -3,8 +3,8 @@
 #
 # This file is in the public domain.
 #
-# For more information contact Lorance Stinson AT Gmail...
-# Or see https://github.com/LStinson/jSQLsh
+# For more information contact Jessica K McIntosh AT gmail DOT com
+# Or see https://github.com/JessicaKMcIntosh/jSQLsh
 
 # Change to where you want the debugger installed.
 prefix		= /usr/local

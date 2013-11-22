@@ -259,7 +259,7 @@ choose a different location.
 
 =head1 HOME
 
-L<https://github.com/LStinson/jSQLsh>
+L<https://github.com/JessicaKMcIntosh/jSQLsh>
 
 =head1 COPYRIGHT
 
@@ -267,7 +267,7 @@ These files are in the public domain.
 
 =head1 AUTHOR
 
-Written by Lorance Stinson AT Gmail....
+Written by Jessica K McIntosh ATL gmail DOT com
 
 I welcome any input.
 

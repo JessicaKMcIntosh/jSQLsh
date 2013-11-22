@@ -2,8 +2,8 @@
 # vim:ft=tcl:foldmethod=marker
 
 # jSQLsh - Jim TCL SQLite Shell {{{1
-# Lorance Stinson - Lorance Stinson AT gmail DOT com
-# https://github.com/LStinson/jSQLsh
+# Jessica McIntosh - Jessica K McIntosh ATL gmail DOT com
+# https://github.com/JessicaKMcIntosh/jSQLsh
 # This file is in the public domain.
 
 # This is an SQLite shell for Jim TCL.
