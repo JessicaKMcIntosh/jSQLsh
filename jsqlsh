@@ -7,7 +7,7 @@
 # This file is in the public domain.
 
 # This is an SQLite shell for Jim TCL.
-# For more on Jim see http://jim.berlios.de/
+# For more on Jim see http://jim.tcl.tk/
 
 # There are things about the SQLite command shell that annoy me.
 # Since there are no easily modified command line SQL clients,
