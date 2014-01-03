@@ -6,7 +6,7 @@
 # For more information contact Jessica K McIntosh AT gmail DOT com
 # Or see https://github.com/JessicaKMcIntosh/jSQLsh
 
-# Change to where you want the debugger installed.
+# Change to where you want jSQLsh installed.
 prefix		= /usr/local
 bin		= $(prefix)/bin
 mandir		= $(prefix)/man
@@ -61,11 +61,14 @@ git: $(DOCS)
 
 # Package the files up for distribution.
 dist: $(DOCS)
-	mkdir $(DIST_DIR)
-	cp -pR $(DISTFILES) $(DIST_DIR)
-	tar -cf - $(DIST_DIR)/ | gzip -9 > $(DIST_DIR).tar.gz
-	zip -r $(DIST_DIR).zip $(DIST_DIR)/
-	rm -rf $(DIST_DIR)
+	mkdir dist
+	mkdir dist/$(DIST_DIR)
+	cp -pR $(DISTFILES) dist/$(DIST_DIR)
+	cd ./dist; \
+	tar -cf - $(DIST_DIR)/ | gzip -9 > ../$(DIST_DIR).tar.gz; \
+	zip -r ../$(DIST_DIR).zip $(DIST_DIR)/; \
+	cd ..; \
+	rm -rf dist
 
 # Generate the manual file.
 man: $(POD)
