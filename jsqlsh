@@ -109,6 +109,11 @@ display_tables
 FROM sqlite_master m
 WHERE m.type = 'table'
 ORDER BY m.name"
+display_trigger
+"SELECT m.name AS 'Name', m.tbl_name AS 'Table'
+FROM sqlite_master m
+WHERE m.type = 'trigger'
+ORDER BY m.name"
 display_views
 "SELECT m.name AS 'Name'
 FROM sqlite_master m
@@ -331,7 +336,7 @@ proc display_help {} {
     puts "  /c(lear)    Clear the query buffer"
     puts "  /D(EBUG)    Toggle the debug option state."
     puts "  /d          Display all objects in the database."
-    puts "  /d\[itv\]     Display all indexes (/di) / tables (/dt) / views (/dv)."
+    puts "  /d\[itvr\]    Display all indexes (/di) / tables (/dt) / views (/dv) / triggers (/dr)."
     puts "  /d OBJ      Describe the object OBJ."
     puts "  /ds OBJ     Displays the schema for the object OBJ."
     puts "  /e(dit)     Edit the query buffer."
@@ -579,6 +584,7 @@ proc handle_cmd_describe {&config db input option} {
         /di     { set query $jsqlsh_queries(display_indexes) }
         /dt     { set query $jsqlsh_queries(display_tables) }
         /dv     { set query $jsqlsh_queries(display_views) }
+        /dr     { set query $jsqlsh_queries(display_trigger) }
         /ds*    {
             if {$option eq ""} {
                 puts "Please provide an object to display schema for."
@@ -846,7 +852,7 @@ proc handle_cmd_user_macro {&config input option} {
                              ""
         } else {
             # Calling a macro.
-            if {![array exists jsqlsh_user_macros($macro)]} {
+            if {![exists jsqlsh_user_macros($macro)]} {
                 puts "Undefined user macro '$macro'."
                 puts "Please define with '/user$macro -' to copy the query buffer"
                 puts "or '/user$macro SQL' to set to specific SQL."
@@ -967,7 +973,7 @@ proc handle_toggle {&config name} {
 # Side effect:
 #   The history file connection is closed.
 proc history_close {&config} {
-    if {[array exists config(hist_chan)]} {
+    if {[exists config(hist_chan)]} {
         close $config(hist_chan)
         array unset config(hist_chan)
     }
@@ -1032,7 +1038,7 @@ proc history_open_append {&config} {
 #   The history file is appended to.
 proc history_write {config line} {
     readline.addhistory $line
-    if {![array exists config(hist_chan)]} {
+    if {![exists config(hist_chan)]} {
         return
     }
     set hist_chan $config(hist_chan)
